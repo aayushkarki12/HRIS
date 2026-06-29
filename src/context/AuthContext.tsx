@@ -18,42 +18,103 @@ interface RegisterData {
   department?: string;
   position?: string;
   join_date?: string;
+  tenant_subdomain?: string;
+}
+
+interface Tenant {
+  id: number;
+  name: string;
+  subdomain: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  logo_url?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface AuthContextType {
   user: User | null;
+  tenant: Tenant | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<LoginResult>;
+  login: (username: string, password: string, tenantId?: number) => Promise<LoginResult>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  switchTenant: (tenantId: number) => void;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isManager: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const storedUser = authService.getCurrentUser();
+    // Load user from localStorage
+    const storedUser = localStorage.getItem('user');
+    const storedTenant = localStorage.getItem('tenant');
+    
+    console.log('AuthProvider - storedUser:', storedUser);
+    console.log('AuthProvider - storedTenant:', storedTenant);
+    
     if (storedUser) {
-      setUser(storedUser);
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        console.log('AuthProvider - user set:', parsedUser);
+      } catch (e) {
+        console.error('Error parsing user:', e);
+      }
     }
+    
+    if (storedTenant) {
+      try {
+        const parsedTenant = JSON.parse(storedTenant);
+        setTenant(parsedTenant);
+        console.log('AuthProvider - tenant set:', parsedTenant);
+      } catch (e) {
+        console.error('Error parsing tenant:', e);
+      }
+    }
+    
     setLoading(false);
   }, []);
 
-  const login = async (username: string, password: string): Promise<LoginResult> => {
+  const login = async (username: string, password: string, tenantId?: number): Promise<LoginResult> => {
     try {
-      console.log('Login attempt with:', { username });
+      console.log('Login attempt with:', { username, tenantId });
       
-      const response = await authService.login({ email: username, password });
+      const response = await authService.login({ email: username, password, tenantId });
       console.log('Login response:', response);
       
+      // Store user
       setUser(response.user);
       localStorage.setItem('access_token', response.access_token);
       localStorage.setItem('user', JSON.stringify(response.user));
+      
+      // Store tenant
+      if (response.tenant) {
+        setTenant(response.tenant);
+        localStorage.setItem('tenant', JSON.stringify(response.tenant));
+        console.log('Tenant stored:', response.tenant);
+      } else {
+        // If no tenant in response, try to get from localStorage
+        const storedTenant = localStorage.getItem('tenant');
+        if (storedTenant) {
+          try {
+            const parsedTenant = JSON.parse(storedTenant);
+            setTenant(parsedTenant);
+          } catch (e) {
+            console.error('Error parsing stored tenant:', e);
+          }
+        }
+      }
+      
       return { success: true };
     } catch (error: any) {
       console.error('Login error:', error);
@@ -64,14 +125,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const status = error.response.status;
         const data = error.response.data;
         
-        console.log('Error response:', { status, data });
-        
         if (status === 422) {
-          // Validation error - extract details
           if (data.detail && Array.isArray(data.detail)) {
-            errorMessage = data.detail.map((err: any) => 
-              `${err.loc?.join('.') || 'field'}: ${err.msg}`
-            ).join(', ');
+            errorMessage = data.detail.map((err: any) => err.msg).join(', ');
           } else if (data.detail) {
             errorMessage = data.detail;
           } else {
@@ -113,6 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         department: data.department || 'General',
         position: data.position || 'Staff',
         join_date: data.join_date || new Date().toISOString().split('T')[0],
+        tenant_subdomain: data.tenant_subdomain || 'default',
       };
 
       console.log('Registration data:', registrationData);
@@ -137,22 +194,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
-    authService.logout();
-    setUser(null);
+  const switchTenant = (tenantId: number): void => {
+    const tenantData = { id: tenantId };
+    localStorage.setItem('tenant', JSON.stringify(tenantData));
+    setTenant(tenantData as Tenant);
+    window.location.reload();
   };
 
-  const isAuthenticated = !!user;
-  const isAdmin = user?.role === 'admin';
+  const logout = (): void => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('tenant');
+    setUser(null);
+    setTenant(null);
+    delete localStorage.__tenant;
+  };
+
+  const isAuthenticated: boolean = !!user;
+  const isAdmin: boolean = user?.role === 'admin';
+  const isManager: boolean = user?.role === 'manager' || user?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, isAuthenticated, isAdmin }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      tenant, 
+      loading, 
+      login, 
+      register, 
+      logout,
+      switchTenant,
+      isAuthenticated, 
+      isAdmin,
+      isManager 
+    }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => {
+// Export useAuth hook
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');

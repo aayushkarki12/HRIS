@@ -1,3 +1,33 @@
+export interface Tenant {
+  id: number;
+  name: string;
+  subdomain: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  logo_url?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  office_latitude?: number | null;
+  office_longitude?: number | null;
+  office_radius?: number | null;
+  office_address?: string | null;
+}
+// Update AuthResponse to include tenant
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+  tenant?: Tenant;
+}
+
+// Update LoginCredentials to include tenant
+export interface LoginCredentials {
+  email: string;
+  password: string;
+  tenantId?: number;
+}
 // User Types
 export interface User {
   id: number;
