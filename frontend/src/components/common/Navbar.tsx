@@ -12,6 +12,8 @@ import {
   MenuItem,
   Tooltip,
   Badge,
+  Chip,
+  Divider,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -19,6 +21,8 @@ import {
   Person as PersonIcon,
   Dashboard as DashboardIcon,
   Notifications as NotificationsIcon,
+  Settings as SettingsIcon,
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 
 const drawerWidth = 240;
@@ -28,9 +32,16 @@ interface NavbarProps {
 }
 
 const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
-  const { user, logout } = useAuth();
+  <MenuItem onClick={() => { navigate('/profile'); handleClose(); }}>
+  <PersonIcon sx={{ mr: 1, fontSize: 20 }} /> Profile
+  </MenuItem>
+  const { user, tenant, logout } = useAuth();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+
+  // Debug logs
+  console.log('Navbar - tenant:', tenant);
+  console.log('Navbar - user:', user);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -45,6 +56,43 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
     navigate('/login');
     handleClose();
   };
+
+  // Get tenant display name
+  const getTenantDisplay = () => {
+    if (tenant?.name) {
+      return tenant.name;
+    }
+    // Fallback: try to get from localStorage
+    const storedTenant = localStorage.getItem('tenant');
+    if (storedTenant) {
+      try {
+        const parsed = JSON.parse(storedTenant);
+        return parsed.name || 'HRIS System';
+      } catch (e) {
+        return 'HRIS System';
+      }
+    }
+    return 'HRIS System';
+  };
+
+  const getTenantSubdomain = () => {
+    if (tenant?.subdomain) {
+      return tenant.subdomain;
+    }
+    const storedTenant = localStorage.getItem('tenant');
+    if (storedTenant) {
+      try {
+        const parsed = JSON.parse(storedTenant);
+        return parsed.subdomain;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const tenantName = getTenantDisplay();
+  const tenantSubdomain = getTenantSubdomain();
 
   return (
     <AppBar
@@ -69,18 +117,40 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
           <MenuIcon />
         </IconButton>
 
-        <Typography
-          variant="h6"
-          noWrap
-          component="div"
-          sx={{
-            fontWeight: 600,
-            color: 'primary.main',
-            fontSize: '1.1rem',
-          }}
-        >
-          HRIS System
-        </Typography>
+        {/* Tenant Branding */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {tenant?.logo_url ? (
+            <img 
+              src={tenant.logo_url} 
+              alt={tenant.name} 
+              style={{ height: 32, width: 'auto' }} 
+            />
+          ) : (
+            <BusinessIcon sx={{ color: 'primary.main', fontSize: 28 }} />
+          )}
+          <Typography
+            variant="h6"
+            noWrap
+            component="div"
+            sx={{
+              fontWeight: 600,
+              color: 'primary.main',
+              fontSize: '1.1rem',
+            }}
+          >
+            {tenantName}
+          </Typography>
+        </Box>
+
+        {/* Tenant Subdomain Badge */}
+        {tenantSubdomain && (
+          <Chip
+            label={tenantSubdomain}
+            size="small"
+            variant="outlined"
+            sx={{ ml: 2, fontSize: '0.7rem', color: 'text.secondary' }}
+          />
+        )}
 
         <Box sx={{ flexGrow: 1 }} />
 
@@ -118,12 +188,35 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
           >
+            <MenuItem disabled>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Avatar sx={{ width: 24, height: 24, bgcolor: 'primary.main', fontSize: '12px' }}>
+                  {user?.first_name?.[0]}{user?.last_name?.[0]}
+                </Avatar>
+                <Box>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    {user?.first_name} {user?.last_name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {user?.email}
+                  </Typography>
+                  <Typography variant="caption" color="primary" sx={{ display: 'block' }}>
+                    {tenantName}
+                  </Typography>
+                </Box>
+              </Box>
+            </MenuItem>
+            <Divider />
             <MenuItem onClick={() => { navigate('/dashboard'); handleClose(); }}>
               <DashboardIcon sx={{ mr: 1, fontSize: 20 }} /> Dashboard
+            </MenuItem>
+            <MenuItem onClick={() => { navigate('/tenant-settings'); handleClose(); }}>
+              <SettingsIcon sx={{ mr: 1, fontSize: 20 }} /> Organization Settings
             </MenuItem>
             <MenuItem onClick={() => { navigate('/profile'); handleClose(); }}>
               <PersonIcon sx={{ mr: 1, fontSize: 20 }} /> Profile
             </MenuItem>
+            <Divider />
             <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
               <LogoutIcon sx={{ mr: 1, fontSize: 20 }} /> Logout
             </MenuItem>

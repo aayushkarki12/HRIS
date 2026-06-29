@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   Drawer,
@@ -15,8 +16,8 @@ import {
   Button,
   IconButton,
   Toolbar,
-  useTheme,
-  useMediaQuery,
+  Chip,
+  Collapse,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -26,6 +27,13 @@ import {
   Assignment as AssignmentIcon,
   Logout as LogoutIcon,
   Close as CloseIcon,
+  Settings as SettingsIcon,
+  Description as DocumentIcon,
+  EventNote as LeaveIcon,
+  AccessTime as AttendanceIcon,
+  Schedule as TimesheetIcon,
+  ExpandLess,
+  ExpandMore,
 } from '@mui/icons-material';
 
 const drawerWidth = 240;
@@ -36,38 +44,34 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, tenant } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const navigation = [
-    { text: 'Dashboard', path: '/dashboard', icon: DashboardIcon },
-    { text: 'Employees', path: '/employees', icon: PeopleIcon },
-    { text: 'Resources', path: '/resources', icon: ComputerIcon },
-    { text: 'Projects', path: '/projects', icon: FolderIcon },
-    ...(isAdmin ? [{ text: 'Assignments', path: '/assignments', icon: AssignmentIcon }] : []),
-  ];
+  const [openHR, setOpenHR] = useState(true);
+  const [openProjects, setOpenProjects] = useState(true);
+
+  const handleNavigation = (path: string) => {
+    navigate(path);
+    if (window.innerWidth < 600) onDrawerToggle();
+  };
 
   const handleLogout = () => {
     logout();
     navigate('/login');
-    if (isMobile) onDrawerToggle();
   };
 
-  const handleNavigation = (path: string) => {
-    navigate(path);
-    if (isMobile) onDrawerToggle();
-  };
+  const isSelected = (path: string) => location.pathname === path;
 
   const drawerContent = (
     <>
       <Toolbar sx={{ justifyContent: 'space-between', px: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-          HRIS
-        </Typography>
-        {isMobile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+            {tenant?.name || 'HRIS'}
+          </Typography>
+        </Box>
+        {window.innerWidth < 600 && (
           <IconButton onClick={onDrawerToggle}>
             <CloseIcon />
           </IconButton>
@@ -76,46 +80,129 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
       <Divider />
 
       <List sx={{ flex: 1, overflowY: 'auto', pt: 2, px: 1 }}>
-        {navigation.map((item) => {
-          const isSelected = location.pathname === item.path;
-          return (
-            <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+        {/* Dashboard */}
+        <ListItem disablePadding sx={{ mb: 0.5 }}>
+          <ListItemButton
+            onClick={() => handleNavigation('/dashboard')}
+            selected={isSelected('/dashboard')}
+            sx={{ borderRadius: 1 }}
+          >
+            <ListItemIcon><DashboardIcon /></ListItemIcon>
+            <ListItemText primary="Dashboard" />
+          </ListItemButton>
+        </ListItem>
+
+        {/* HR Management */}
+        <ListItem disablePadding>
+          <ListItemButton onClick={() => setOpenHR(!openHR)} sx={{ borderRadius: 1 }}>
+            <ListItemIcon><PeopleIcon /></ListItemIcon>
+            <ListItemText primary="HR Management" />
+            {openHR ? <ExpandLess /> : <ExpandMore />}
+          </ListItemButton>
+        </ListItem>
+        <Collapse in={openHR} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            <ListItem disablePadding sx={{ pl: 4 }}>
               <ListItemButton
-                onClick={() => handleNavigation(item.path)}
-                selected={isSelected}
-                sx={{
-                  borderRadius: 1,
-                  '&.Mui-selected': {
-                    backgroundColor: 'primary.main',
-                    color: 'white',
-                    '&:hover': {
-                      backgroundColor: 'primary.dark',
-                    },
-                    '& .MuiListItemIcon-root': {
-                      color: 'white',
-                    },
-                  },
-                  '&:hover': {
-                    backgroundColor: 'primary.light',
-                    '& .MuiListItemIcon-root': {
-                      color: 'primary.main',
-                    },
-                  },
-                }}
+                onClick={() => handleNavigation('/employees')}
+                selected={isSelected('/employees')}
+                sx={{ borderRadius: 1 }}
               >
-                <ListItemIcon
-                  sx={{
-                    color: isSelected ? 'white' : 'inherit',
-                    minWidth: 40,
-                  }}
-                >
-                  <item.icon />
-                </ListItemIcon>
-                <ListItemText primary={item.text} />
+                <ListItemText primary="Employees" />
               </ListItemButton>
             </ListItem>
-          );
-        })}
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/documents')}
+                selected={isSelected('/documents')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Documents" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/leaves')}
+                selected={isSelected('/leaves')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Leave Management" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/attendance')}
+                selected={isSelected('/attendance')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Attendance" />
+              </ListItemButton>
+            </ListItem>
+          </List>
+        </Collapse>
+
+        {/* Project Management */}
+        <ListItem disablePadding>
+          <ListItemButton onClick={() => setOpenProjects(!openProjects)} sx={{ borderRadius: 1 }}>
+            <ListItemIcon><FolderIcon /></ListItemIcon>
+            <ListItemText primary="Project Management" />
+            {openProjects ? <ExpandLess /> : <ExpandMore />}
+          </ListItemButton>
+        </ListItem>
+        <Collapse in={openProjects} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/projects')}
+                selected={isSelected('/projects')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Projects" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/resources')}
+                selected={isSelected('/resources')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Resources" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/assignments')}
+                selected={isSelected('/assignments')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Assignments" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/timesheets')}
+                selected={isSelected('/timesheets')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Timesheets" />
+              </ListItemButton>
+            </ListItem>
+          </List>
+        </Collapse>
+
+        {/* Settings */}
+        {isAdmin && (
+          <ListItem disablePadding sx={{ mb: 0.5 }}>
+            <ListItemButton
+              onClick={() => handleNavigation('/tenant-settings')}
+              selected={isSelected('/tenant-settings')}
+              sx={{ borderRadius: 1 }}
+            >
+              <ListItemIcon><SettingsIcon /></ListItemIcon>
+              <ListItemText primary="Settings" />
+            </ListItemButton>
+          </ListItem>
+        )}
       </List>
 
       <Divider />
@@ -132,9 +219,11 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
             <Typography variant="caption" color="text.secondary" noWrap>
               {user?.email}
             </Typography>
-            <Typography variant="caption" color="primary" sx={{ textTransform: 'capitalize' }}>
-              {user?.role}
-            </Typography>
+            <Chip
+              label={user?.role}
+              size="small"
+              sx={{ mt: 0.5, height: 16, fontSize: '0.6rem' }}
+            />
           </Box>
         </Box>
         <Button
@@ -162,9 +251,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
         variant="temporary"
         open={mobileOpen}
         onClose={onDrawerToggle}
-        ModalProps={{
-          keepMounted: true,
-        }}
+        ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: 'block', sm: 'none' },
           '& .MuiDrawer-paper': {

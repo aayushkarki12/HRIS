@@ -1,26 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Paper,
   TextField,
   Button,
   Typography,
-  Box,
   Alert,
-  Link,
-  Divider,
-  Fade,
   CircularProgress,
+  Box,
+  InputAdornment,
+  IconButton,
+  Divider,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
 } from '@mui/material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import LoginIcon from '@mui/icons-material/Login';
+import PersonIcon from '@mui/icons-material/Person';
+import LockIcon from '@mui/icons-material/Lock';
+import BusinessIcon from '@mui/icons-material/Business';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState({ username: '', password: '' });
+  const [tenantId, setTenantId] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+
+  // Fetch available tenants
+  const { data: tenants, isLoading: tenantsLoading } = useQuery({
+    queryKey: ['tenants'],
+    queryFn: async () => {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/tenants`);
+      return response.data;
+    },
+    // In production, you might not want to expose all tenants
+    enabled: false, // Disable by default - can be enabled for admin
+  });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -33,8 +58,15 @@ const Login: React.FC = () => {
     setError('');
 
     try {
-      // Login expects username and password
-      const result = await login(formData.username, formData.password);
+      console.log('Submitting login for:', formData.username, 'Tenant:', tenantId);
+      
+      const result = await login(
+        formData.username, 
+        formData.password,
+        tenantId ? parseInt(tenantId) : undefined
+      );
+      
+      console.log('Login result:', result);
       
       if (result.success) {
         navigate('/dashboard');
@@ -42,25 +74,7 @@ const Login: React.FC = () => {
         setError(result.error || 'Login failed. Please try again.');
       }
     } catch (err: any) {
-      setError('An unexpected error occurred. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = async (username: string, password: string) => {
-    setFormData({ username, password });
-    setLoading(true);
-    setError('');
-
-    try {
-      const result = await login(username, password);
-      if (result.success) {
-        navigate('/dashboard');
-      } else {
-        setError(result.error || 'Login failed. Please try again.');
-      }
-    } catch (err: any) {
+      console.error('Login component error:', err);
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -75,151 +89,180 @@ const Login: React.FC = () => {
         alignItems: 'center',
         justifyContent: 'center',
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: 2,
       }}
     >
-      <Container maxWidth="xs">
-        <Fade in={true} timeout={500}>
-          <Paper
-            elevation={12}
-            sx={{
-              padding: 4,
-              borderRadius: 3,
-              background: 'white',
-              maxWidth: '420px',
-              margin: '0 auto',
-            }}
-          >
-            <Box sx={{ textAlign: 'center', marginBottom: 3 }}>
-              <Box
-                sx={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 56,
-                  height: 56,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  marginBottom: 1.5,
-                }}
-              >
-                <Typography sx={{ fontSize: 28, color: 'white' }}>🏢</Typography>
-              </Box>
-              <Typography 
-                variant="h5" 
-                sx={{ 
-                  fontWeight: 700,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                  marginBottom: 0.5,
-                }}
-              >
-                HRIS System
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Human Resource Information System
-              </Typography>
+      <Container maxWidth="sm">
+        <Paper
+          elevation={24}
+          sx={{
+            p: 5,
+            borderRadius: 3,
+            background: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
+          }}
+        >
+          {/* Header */}
+          <Box sx={{ textAlign: 'center', mb: 4 }}>
+            <Box
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 70,
+                height: 70,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                mb: 2,
+              }}
+            >
+              <LoginIcon sx={{ fontSize: 35, color: 'white' }} />
             </Box>
-
-            <Divider sx={{ marginBottom: 2.5 }} />
-
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, marginBottom: 0.5, textAlign: 'center' }}>
-              Welcome Back!
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
+            >
+              HRIS System
             </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', textAlign: 'center', marginBottom: 2.5 }}>
-              Sign in to continue
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
+              Human Resource Information System
             </Typography>
+          </Box>
 
-            {error && (
-              <Alert 
-                severity="error" 
-                sx={{ marginBottom: 2, borderRadius: 1.5 }}
-                onClose={() => setError('')}
-              >
-                {error}
-              </Alert>
-            )}
+          <Divider sx={{ mb: 3 }} />
 
-            <form onSubmit={handleSubmit}>
-              <TextField
-                fullWidth
-                label="Username or Email"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                variant="outlined"
-                autoFocus
-                size="small"
-                sx={{ marginBottom: 1.5 }}
-              />
-              <TextField
-                fullWidth
-                label="Password"
-                name="password"
-                type="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                variant="outlined"
-                size="small"
-                sx={{ marginBottom: 2 }}
-              />
+          <Typography variant="h6" align="center" sx={{ fontWeight: 600, mb: 0.5 }}>
+            Welcome Back!
+          </Typography>
+          <Typography variant="body2" align="center" color="textSecondary" sx={{ mb: 3 }}>
+            Sign in to access your dashboard
+          </Typography>
 
-              <Button
-                fullWidth
-                type="submit"
-                variant="contained"
-                disabled={loading}
-                sx={{
-                  paddingY: 1.2,
+          {error && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setError('')}>
+              {error}
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <TextField
+              fullWidth
+              label="Username or Email"
+              name="username"
+              value={formData.username}
+              onChange={handleChange}
+              required
+              margin="normal"
+              size="medium"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonIcon color="action" />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)',
-                  '&:hover': {
-                    transform: 'translateY(-1px)',
-                    boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  '&:hover fieldset': {
+                    borderColor: '#667eea',
                   },
+                },
+              }}
+            />
+            
+            <TextField
+              fullWidth
+              label="Password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              value={formData.password}
+              onChange={handleChange}
+              required
+              margin="normal"
+              size="medium"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockIcon color="action" />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                  '&:hover fieldset': {
+                    borderColor: '#667eea',
+                  },
+                },
+              }}
+            />
+
+            <Button
+              fullWidth
+              type="submit"
+              variant="contained"
+              disabled={loading}
+              size="large"
+              sx={{
+                mt: 3,
+                mb: 2,
+                py: 1.5,
+                borderRadius: 2,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 8px 25px rgba(102, 126, 234, 0.5)',
+                },
+                transition: 'transform 0.2s, box-shadow 0.2s',
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '1rem',
+              }}
+            >
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
+            </Button>
+          </form>
+
+          <Box sx={{ textAlign: 'center', mt: 2 }}>
+            <Typography variant="body2" color="textSecondary">
+              Don't have an account?{' '}
+              <Button
+                component={RouterLink}
+                to="/register"
+                sx={{
                   textTransform: 'none',
                   fontWeight: 600,
-                  fontSize: '0.95rem',
+                  color: '#667eea',
+                  '&:hover': {
+                    color: '#764ba2',
+                  },
                 }}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
+                Register here
               </Button>
-            </form>
+            </Typography>
+          </Box>
 
-            <Box sx={{ textAlign: 'center', marginTop: 2 }}>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Don't have an account?{' '}
-                <Link
-                  component={RouterLink}
-                  to="/register"
-                  underline="hover"
-                  sx={{
-                    fontWeight: 600,
-                    color: '#667eea',
-                    '&:hover': {
-                      color: '#764ba2',
-                    },
-                  }}
-                >
-                  Register here
-                </Link>
-              </Typography>
-            </Box>
-
-
-            <Box sx={{ textAlign: 'center', marginTop: 1.5 }}>
-              <Typography variant="caption" sx={{ color: 'text.secondary', opacity: 0.7 }}>
-                Secured with JWT
-              </Typography>
-            </Box>
-          </Paper>
-        </Fade>
+          <Box sx={{ textAlign: 'center', mt: 1.5 }}>
+            <Typography variant="caption" color="textSecondary" sx={{ opacity: 0.7 }}>
+              Secured with JWT • Multi-Tenant Ready
+            </Typography>
+          </Box>
+        </Paper>
       </Container>
     </Box>
   );

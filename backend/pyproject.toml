@@ -10,5 +10,6 @@ dependencies = [
     "passlib>=1.7.4",
     "psycopg2>=2.9.12",
     "python-jose[cryptography]>=3.5.0",
+    "pytz>=2026.2",
     "sqlalchemy>=2.0.51",
 ]

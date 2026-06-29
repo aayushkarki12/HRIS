@@ -14,10 +14,12 @@ class Project(Base):
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=True)
     budget = Column(Float, nullable=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationships
+    # Relationships - use string references
+    tenant = relationship("Tenant", back_populates="projects")
     assignments = relationship("Assignment", back_populates="project")
     
     def __repr__(self):
