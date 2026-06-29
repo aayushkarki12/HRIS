@@ -8,6 +8,12 @@ class UserBase(BaseModel):
     email: EmailStr
     first_name: str = Field(..., min_length=1, max_length=50)
     last_name: str = Field(..., min_length=1, max_length=50)
+    
+    @validator('username')
+    def username_alphanumeric(cls, v):
+        if not v.isalnum():
+            raise ValueError('Username must be alphanumeric')
+        return v
 
 
 class UserCreate(UserBase):
@@ -15,7 +21,15 @@ class UserCreate(UserBase):
     phone: Optional[str] = Field(None, min_length=10, max_length=20)
     department: str = Field("General", min_length=2, max_length=50)
     position: str = Field("Staff", min_length=2, max_length=50)
-    join_date: Optional[date] = None  # This maps to joining_date in Employee
+    join_date: Optional[date] = None
+    role: Optional[str] = Field("user", pattern="^(admin|manager|user)$")
+    tenant_subdomain: str = Field("default", min_length=2, max_length=50)
+    
+    @validator('password')
+    def password_strength(cls, v):
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        return v
 
 
 class UserUpdate(BaseModel):
@@ -35,6 +49,23 @@ class UserResponse(BaseModel):
     last_name: str
     role: str
     is_active: bool
+    tenant_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class TenantInfo(BaseModel):
+    id: int
+    name: str
+    subdomain: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    logo_url: Optional[str] = None
+    is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
     
@@ -46,8 +77,10 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse
+    tenant: Optional[TenantInfo] = None
 
 
 class TokenData(BaseModel):
     user_id: Optional[int] = None
     role: Optional[str] = None
+    tenant_id: Optional[int] = None

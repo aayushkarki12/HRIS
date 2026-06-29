@@ -12,16 +12,18 @@ class Resource(Base):
     name = Column(String(100), nullable=False)
     type = Column(String(50), nullable=False)
     model = Column(String(100), nullable=True)
-    serial_number = Column(String(50), unique=True, nullable=False)
+    serial_number = Column(String(50), nullable=False)
     status = Column(String(20), default="available", nullable=False)
     assigned_to = Column(Integer, ForeignKey("employees.id"), nullable=True)
     purchase_date = Column(Date, nullable=True)
     warranty_until = Column(Date, nullable=True)
     notes = Column(Text, nullable=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationships
+    # Relationships - use string references
+    tenant = relationship("Tenant", back_populates="resources")
     assignments = relationship("Assignment", back_populates="resource")
     
     def __repr__(self):

@@ -1,93 +1,269 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
+import traceback
+from datetime import date
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_active_user, get_current_admin_user
+from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant
 from ...models.user import User
+from ...models.tenant import Tenant
 from ...models.employee import Employee
 from ...schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
+# ============================================
+# STATIC ROUTES - MUST COME FIRST
+# ============================================
+
+@router.get("/me", response_model=EmployeeResponse)
+def get_my_profile(
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current user's employee profile.
+    """
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id,
+        Employee.tenant_id == tenant.id
+    ).first()
+    
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee profile not found")
+    
+    return employee
+
+@router.put("/me", response_model=EmployeeResponse)
+def update_my_profile(
+    employee_data: EmployeeUpdate,
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Update current user's employee profile (self-service).
+    """
+    try:
+        employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id,
+            Employee.tenant_id == tenant.id
+        ).first()
+        
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee profile not found")
+        
+        # Get only the fields that were sent
+        update_data = employee_data.model_dump(exclude_unset=True)
+        
+        print(f"Updating employee {employee.id} with data: {update_data}")
+        
+        # Allowed fields for self-service
+        allowed_fields = [
+            'first_name', 'last_name', 'email', 'phone', 
+            'date_of_birth', 'gender', 'marital_status', 'address',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
+            'bank_name', 'bank_account', 'bank_routing', 'social_security',
+            'skills', 'certifications', 'profile_picture'
+        ]
+        
+        # Update only allowed fields
+        for key, value in update_data.items():
+            if key in allowed_fields:
+                # Handle empty strings - convert to None
+                if value == "":
+                    value = None
+                # Handle date_of_birth specifically
+                if key == 'date_of_birth' and value:
+                    # Try to parse the date
+                    try:
+                        if isinstance(value, str):
+                            # If it's a string, convert to date
+                            from datetime import datetime
+                            value = datetime.strptime(value, '%Y-%m-%d').date()
+                    except Exception as e:
+                        print(f"Error parsing date: {e}")
+                        # If date parsing fails, set to None
+                        value = None
+                
+                print(f"Setting {key} = {value}")
+                setattr(employee, key, value)
+        
+        db.commit()
+        db.refresh(employee)
+        
+        return employee
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error in update_my_profile: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")
 
 @router.get("/", response_model=List[EmployeeResponse])
 def get_employees(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     department: Optional[str] = None,
+    search: Optional[str] = None,
     current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Get all employees with optional filters."""
-    query = db.query(Employee)
-    
-    if department:
-        query = query.filter(Employee.department == department)
-    
-    employees = query.offset(skip).limit(limit).all()
-    return employees
+    """Get all employees for the current tenant."""
+    try:
+        query = db.query(Employee).filter(Employee.tenant_id == tenant.id)
+        
+        if department:
+            query = query.filter(Employee.department == department)
+        if search:
+            query = query.filter(
+                (Employee.first_name.contains(search)) |
+                (Employee.last_name.contains(search)) |
+                (Employee.email.contains(search))
+            )
+        
+        employees = query.offset(skip).limit(limit).all()
+        return employees
+    except Exception as e:
+        print(f"Error in get_employees: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/stats", response_model=dict)
+def get_employee_stats(
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """Get employee statistics for the current tenant."""
+    try:
+        total = db.query(Employee).filter(Employee.tenant_id == tenant.id).count()
+        active = db.query(Employee).filter(
+            Employee.tenant_id == tenant.id,
+            Employee.is_active == True
+        ).count()
+        
+        departments = db.query(
+            Employee.department,
+            func.count(Employee.id).label('count')
+        ).filter(Employee.tenant_id == tenant.id).group_by(Employee.department).all()
+        
+        return {
+            "total": total,
+            "active": active,
+            "inactive": total - active,
+            "departments": [{"name": d.department, "count": d.count} for d in departments]
+        }
+    except Exception as e:
+        print(f"Error in get_employee_stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
 def create_employee(
     employee_data: EmployeeCreate,
     current_user: User = Depends(get_current_admin_user),
+    tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Create a new employee (admin only)."""
-    existing = db.query(Employee).filter(Employee.employee_id == employee_data.employee_id).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Employee ID already exists")
-    
-    db_employee = Employee(**employee_data.model_dump())
-    db.add(db_employee)
-    db.commit()
-    db.refresh(db_employee)
-    return db_employee
+    """Create a new employee for the current tenant (admin only)."""
+    try:
+        existing = db.query(Employee).filter(
+            Employee.employee_id == employee_data.employee_id,
+            Employee.tenant_id == tenant.id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Employee ID already exists")
+        
+        db_employee = Employee(**employee_data.model_dump(), tenant_id=tenant.id)
+        db.add(db_employee)
+        db.commit()
+        db.refresh(db_employee)
+        return db_employee
+    except Exception as e:
+        print(f"Error in create_employee: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
+# ============================================
+# DYNAMIC ROUTES - MUST COME AFTER STATIC ROUTES
+# ============================================
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)
 def get_employee(
     employee_id: int,
     current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Get employee by ID."""
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    return employee
+    """Get employee by ID for the current tenant."""
+    try:
+        employee = db.query(Employee).filter(
+            Employee.id == employee_id,
+            Employee.tenant_id == tenant.id
+        ).first()
+        
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        return employee
+    except Exception as e:
+        print(f"Error in get_employee: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)
 def update_employee(
     employee_id: int,
     employee_data: EmployeeUpdate,
     current_user: User = Depends(get_current_admin_user),
+    tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Update employee (admin only)."""
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    
-    for key, value in employee_data.model_dump(exclude_unset=True).items():
-        setattr(employee, key, value)
-    
-    db.commit()
-    db.refresh(employee)
-    return employee
+    """Update employee for the current tenant (admin only)."""
+    try:
+        employee = db.query(Employee).filter(
+            Employee.id == employee_id,
+            Employee.tenant_id == tenant.id
+        ).first()
+        
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        for key, value in employee_data.model_dump(exclude_unset=True).items():
+            setattr(employee, key, value)
+        
+        db.commit()
+        db.refresh(employee)
+        return employee
+    except Exception as e:
+        print(f"Error in update_employee: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{employee_id}")
 def delete_employee(
     employee_id: int,
     current_user: User = Depends(get_current_admin_user),
+    tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Deactivate employee (admin only)."""
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    
-    employee.is_active = False
-    db.commit()
-    return {"message": "Employee deactivated successfully"}
+    """Deactivate employee for the current tenant (admin only)."""
+    try:
+        employee = db.query(Employee).filter(
+            Employee.id == employee_id,
+            Employee.tenant_id == tenant.id
+        ).first()
+        
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        employee.is_active = False
+        db.commit()
+        return {"message": "Employee deactivated successfully"}
+    except Exception as e:
+        print(f"Error in delete_employee: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))

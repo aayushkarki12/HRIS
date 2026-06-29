@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -15,10 +15,12 @@ class User(Base):
     last_name = Column(String(50), nullable=True, default='')
     role = Column(String(20), default="user", nullable=False)
     is_active = Column(Boolean, default=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationships
+    # Relationships - use string references
+    tenant = relationship("Tenant", back_populates="users")
     employee = relationship("Employee", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
     @property
