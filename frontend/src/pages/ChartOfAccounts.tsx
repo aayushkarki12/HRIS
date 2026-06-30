@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import { accountingService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import AccessDenied from '../components/common/AccessDenied';
 
 const ACCOUNT_TYPES = [
   { value: 'asset', label: 'Asset', color: '#2196f3' },
@@ -46,7 +47,7 @@ const getTypeColor = (type: string): string => {
 };
 
 const ChartOfAccounts: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isManager } = useAuth();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
@@ -157,6 +158,10 @@ const ChartOfAccounts: React.FC = () => {
   );
 
   const parentAccounts = accounts?.filter((a: any) => a.is_active) || [];
+
+  if (!isManager) {
+    return <AccessDenied />;
+  }
 
   if (isLoading) {
     return (

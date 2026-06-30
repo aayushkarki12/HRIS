@@ -24,6 +24,7 @@ import Payroll from './pages/Payroll';
 import ExpenseClaims from './pages/ExpenseClaims';
 import Invoices from './pages/Invoices';
 import FinancialReports from './pages/FinancialReports';
+import Users from './pages/Users';
 
 function App() {
   return (
@@ -50,6 +51,7 @@ function App() {
             <Route path="expense-claims" element={<ExpenseClaims />} />
             <Route path="invoices" element={<Invoices />} />
             <Route path="financial-reports" element={<FinancialReports />} />
+            <Route path="users" element={<Users />} />
             <Route path="tenant-settings" element={<TenantSettings />} />
             <Route path="profile" element={<Profile />} />
           </Route>

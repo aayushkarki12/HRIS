@@ -408,12 +408,13 @@ const Register: React.FC = () => {
               <TextField
                 fullWidth
                 select
-                label="Position"
+                label="Job Title"
                 name="position"
                 value={formData.position}
                 onChange={handleChange}
                 variant="outlined"
                 size="small"
+                helperText="This is just your job title for HR records"
               >
                 {positions.map((pos) => (
                   <MenuItem key={pos} value={pos}>

@@ -26,6 +26,8 @@ import {
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { accountingService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import AccessDenied from '../components/common/AccessDenied';
 
 const fmt = (n: number) => `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -34,6 +36,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const FinancialReports: React.FC = () => {
+  const { isManager } = useAuth();
   const [tab, setTab] = useState(0);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -83,6 +86,10 @@ const FinancialReports: React.FC = () => {
       </TableRow>
     ))
   );
+
+  if (!isManager) {
+    return <AccessDenied />;
+  }
 
   return (
     <Box>

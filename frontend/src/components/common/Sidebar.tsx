@@ -33,6 +33,7 @@ import {
   AccessTime as AttendanceIcon,
   Schedule as TimesheetIcon,
   AccountBalance as AccountingIcon,
+  ManageAccounts as UsersIcon,
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
@@ -45,7 +46,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
-  const { user, logout, isAdmin, tenant } = useAuth();
+  const { user, logout, isAdmin, isManager, tenant } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -202,33 +203,37 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
         </ListItem>
         <Collapse in={openAccounting} timeout="auto" unmountOnExit>
           <List component="div" disablePadding>
-            <ListItem disablePadding sx={{ pl: 4 }}>
-              <ListItemButton
-                onClick={() => handleNavigation('/chart-of-accounts')}
-                selected={isSelected('/chart-of-accounts')}
-                sx={{ borderRadius: 1 }}
-              >
-                <ListItemText primary="Chart of Accounts" />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding sx={{ pl: 4 }}>
-              <ListItemButton
-                onClick={() => handleNavigation('/journal-entries')}
-                selected={isSelected('/journal-entries')}
-                sx={{ borderRadius: 1 }}
-              >
-                <ListItemText primary="Journal Entries" />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding sx={{ pl: 4 }}>
-              <ListItemButton
-                onClick={() => handleNavigation('/general-ledger')}
-                selected={isSelected('/general-ledger')}
-                sx={{ borderRadius: 1 }}
-              >
-                <ListItemText primary="General Ledger" />
-              </ListItemButton>
-            </ListItem>
+            {isManager && (
+              <>
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    onClick={() => handleNavigation('/chart-of-accounts')}
+                    selected={isSelected('/chart-of-accounts')}
+                    sx={{ borderRadius: 1 }}
+                  >
+                    <ListItemText primary="Chart of Accounts" />
+                  </ListItemButton>
+                </ListItem>
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    onClick={() => handleNavigation('/journal-entries')}
+                    selected={isSelected('/journal-entries')}
+                    sx={{ borderRadius: 1 }}
+                  >
+                    <ListItemText primary="Journal Entries" />
+                  </ListItemButton>
+                </ListItem>
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    onClick={() => handleNavigation('/general-ledger')}
+                    selected={isSelected('/general-ledger')}
+                    sx={{ borderRadius: 1 }}
+                  >
+                    <ListItemText primary="General Ledger" />
+                  </ListItemButton>
+                </ListItem>
+              </>
+            )}
             <ListItem disablePadding sx={{ pl: 4 }}>
               <ListItemButton
                 onClick={() => handleNavigation('/payroll')}
@@ -247,26 +252,44 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
                 <ListItemText primary="Expense Claims" />
               </ListItemButton>
             </ListItem>
-            <ListItem disablePadding sx={{ pl: 4 }}>
-              <ListItemButton
-                onClick={() => handleNavigation('/invoices')}
-                selected={isSelected('/invoices')}
-                sx={{ borderRadius: 1 }}
-              >
-                <ListItemText primary="Invoices" />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding sx={{ pl: 4 }}>
-              <ListItemButton
-                onClick={() => handleNavigation('/financial-reports')}
-                selected={isSelected('/financial-reports')}
-                sx={{ borderRadius: 1 }}
-              >
-                <ListItemText primary="Reports" />
-              </ListItemButton>
-            </ListItem>
+            {isManager && (
+              <>
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    onClick={() => handleNavigation('/invoices')}
+                    selected={isSelected('/invoices')}
+                    sx={{ borderRadius: 1 }}
+                  >
+                    <ListItemText primary="Invoices" />
+                  </ListItemButton>
+                </ListItem>
+                <ListItem disablePadding sx={{ pl: 4 }}>
+                  <ListItemButton
+                    onClick={() => handleNavigation('/financial-reports')}
+                    selected={isSelected('/financial-reports')}
+                    sx={{ borderRadius: 1 }}
+                  >
+                    <ListItemText primary="Reports" />
+                  </ListItemButton>
+                </ListItem>
+              </>
+            )}
           </List>
         </Collapse>
+
+        {/* Users & Roles */}
+        {isAdmin && (
+          <ListItem disablePadding sx={{ mb: 0.5 }}>
+            <ListItemButton
+              onClick={() => handleNavigation('/users')}
+              selected={isSelected('/users')}
+              sx={{ borderRadius: 1 }}
+            >
+              <ListItemIcon><UsersIcon /></ListItemIcon>
+              <ListItemText primary="Users & Roles" />
+            </ListItemButton>
+          </ListItem>
+        )}
 
         {/* Settings */}
         {isAdmin && (

@@ -52,7 +52,7 @@ export interface Employee {
   phone: string;
   department: string;
   position: string;
-  join_date: string;
+  joining_date: string;
   is_active: boolean;
   user_id: number;
   user?: User;
@@ -137,7 +137,7 @@ export interface EmployeeCreate {
   phone: string;
   department: string;
   position: string;
-  join_date: string;
+  joining_date: string;
 }
 
 export interface EmployeeUpdate {
@@ -147,7 +147,7 @@ export interface EmployeeUpdate {
   phone?: string;
   department?: string;
   position?: string;
-  join_date?: string;
+  joining_date?: string;
   is_active?: boolean;
 }
 

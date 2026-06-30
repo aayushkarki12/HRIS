@@ -25,6 +25,8 @@ import {
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { accountingService } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import AccessDenied from '../components/common/AccessDenied';
 
 const ACCOUNT_TYPE_COLORS: Record<string, string> = {
   asset: '#2196f3',
@@ -37,6 +39,7 @@ const ACCOUNT_TYPE_COLORS: Record<string, string> = {
 const fmt = (n: number) => `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const GeneralLedger: React.FC = () => {
+  const { isManager } = useAuth();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [accountType, setAccountType] = useState('');
@@ -84,6 +87,10 @@ const GeneralLedger: React.FC = () => {
 
   const totalDebit = ledger?.reduce((s: number, a: any) => s + a.total_debit, 0) || 0;
   const totalCredit = ledger?.reduce((s: number, a: any) => s + a.total_credit, 0) || 0;
+
+  if (!isManager) {
+    return <AccessDenied />;
+  }
 
   if (isLoading) {
     return (
