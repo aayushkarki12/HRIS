@@ -5,7 +5,7 @@ from typing import List, Optional
 from ...core.database import get_db
 from ...core.dependencies import get_current_admin_user, get_current_active_user
 from ...models.user import User
-from ...schemas.user import UserResponse, UserUpdate, ChangePasswordRequest
+from ...schemas.user import UserResponse, UserUpdate, ChangePasswordRequest, AdminResetPasswordRequest
 from ...core.security import get_password_hash
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -171,6 +171,38 @@ def change_password(
     db.commit()
 
     return {"message": "Password changed successfully. All other sessions have been logged out."}
+
+
+@router.put("/{user_id}/admin-reset-password")
+def admin_reset_password(
+    user_id: int,
+    data: AdminResetPasswordRequest,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Admin-forced password reset, no knowledge of the old password required.
+    For cases the self-service email flow can't cover - e.g. the user has
+    lost access to their registered email entirely.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    from ...core.security import validate_password_strength
+    password_error = validate_password_strength(data.new_password)
+    if password_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
+
+    from ...models.refresh_token import RefreshToken
+    user.hashed_password = get_password_hash(data.new_password)
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False
+    ).update({"revoked": True})
+    db.commit()
+
+    return {"message": f"Password reset for {user.username}. All their active sessions have been logged out."}
 
 
 @router.delete("/{user_id}")

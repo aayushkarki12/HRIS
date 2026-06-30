@@ -14,6 +14,7 @@ from .expense import ExpenseClaim, ExpenseClaimLine
 from .invoice import Invoice, InvoiceLine, Payment
 from .refresh_token import RefreshToken
 from .audit_log import AuditLog
+from .password_reset_token import PasswordResetToken
 
 __all__ = [
     "User",
@@ -45,4 +46,5 @@ __all__ = [
     "Payment",
     "RefreshToken",
     "AuditLog",
+    "PasswordResetToken",
 ]

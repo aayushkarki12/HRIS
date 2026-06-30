@@ -19,7 +19,9 @@ import app.models  # noqa: F401 - imports every model so Base.metadata is fully 
 config = context.config
 
 # Use the real database URL from settings/.env instead of alembic.ini.
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# configparser treats % as interpolation syntax, so a URL-encoded password
+# (e.g. %40 for @) must have its % doubled before being stored as a config value.
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

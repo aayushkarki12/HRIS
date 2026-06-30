@@ -6,6 +6,7 @@ from datetime import timedelta, date, datetime, timezone
 from typing import Optional
 
 from ...core.database import get_db
+from ...core.config import settings
 from ...core.security import (
     create_access_token,
     verify_password,
@@ -21,10 +22,16 @@ from ...models.user import User
 from ...models.employee import Employee
 from ...models.tenant import Tenant
 from ...models.refresh_token import RefreshToken
+from ...models.password_reset_token import PasswordResetToken
 from ...schemas.user import (
     UserCreate, UserResponse, Token,
     RefreshTokenRequest, AccessTokenResponse,
+    ForgotPasswordRequest, ResetPasswordRequest,
 )
+from ...core.security import validate_password_strength
+from ...core.email import send_password_reset_email
+
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 60
 
 logger = logging.getLogger(__name__)
 
@@ -278,3 +285,83 @@ def logout(
         db_token.revoked = True
         db.commit()
     return None
+
+
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+@limiter.limit("3/minute")
+def forgot_password(
+    request: Request,
+    data: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Request a password reset email. Always returns the same generic message
+    regardless of whether the email/tenant exists or the send succeeded -
+    leaking that information would let an attacker enumerate valid accounts.
+    """
+    generic_response = {"message": "If an account with that email exists, a password reset link has been sent."}
+
+    tenant = db.query(Tenant).filter(Tenant.subdomain == data.tenant_subdomain).first()
+    if not tenant:
+        return generic_response
+
+    user = db.query(User).filter(User.email == data.email, User.tenant_id == tenant.id).first()
+    if not user or not user.is_active:
+        return generic_response
+
+    raw_token = generate_refresh_token()
+    db.add(PasswordResetToken(
+        user_id=user.id,
+        tenant_id=tenant.id,
+        token_hash=hash_refresh_token(raw_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+        used=False,
+    ))
+    db.commit()
+
+    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
+    send_password_reset_email(user.email, user.first_name, reset_link)
+
+    return generic_response
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
+def reset_password(
+    request: Request,
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Redeem a password reset token: validate it's unused and unexpired, set
+    the new password, mark the token used, and revoke all refresh tokens
+    (same reasoning as a self-service password change).
+    """
+    token_hash = hash_refresh_token(data.token)
+    db_token = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token_hash == token_hash
+    ).first()
+
+    if not db_token or db_token.used or db_token.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset link is invalid or has expired. Please request a new one."
+        )
+
+    password_error = validate_password_strength(data.new_password)
+    if password_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
+
+    user = db.query(User).filter(User.id == db_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user.hashed_password = get_password_hash(data.new_password)
+    db_token.used = True
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False
+    ).update({"revoked": True})
+    db.commit()
+
+    return {"message": "Password has been reset successfully. Please log in with your new password."}

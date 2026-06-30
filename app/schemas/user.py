@@ -107,6 +107,20 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    tenant_subdomain: str = "default"
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
 class TokenData(BaseModel):
     user_id: Optional[int] = None
     role: Optional[str] = None
