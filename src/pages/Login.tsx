@@ -237,7 +237,7 @@ const Login: React.FC = () => {
             </Button>
           </form>
 
-          <Box sx={{ textAlign: 'center' }}>
+          <Box sx={{ textAlign: 'right' }}>
             <Button
               component={RouterLink}
               to="/forgot-password"
@@ -253,7 +253,7 @@ const Login: React.FC = () => {
             </Button>
           </Box>
 
-          <Box sx={{ textAlign: 'center', mt: 1 }}>
+          <Box sx={{ textAlign: 'center' }}>
             <Typography variant="body2" color="textSecondary">
               Don't have an account?{' '}
               <Button
