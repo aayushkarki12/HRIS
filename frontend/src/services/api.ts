@@ -153,6 +153,16 @@ export const authService = {
     const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
   },
+
+  forgotPassword: async (email: string, tenantSubdomain: string = 'default') => {
+    const response = await api.post('/auth/forgot-password', { email, tenant_subdomain: tenantSubdomain });
+    return response.data;
+  },
+
+  resetPassword: async (token: string, newPassword: string) => {
+    const response = await api.post('/auth/reset-password', { token, new_password: newPassword });
+    return response.data;
+  },
 };
 
 // ============ USER SERVICE (admin: role & account management) ============
@@ -174,6 +184,11 @@ export const userService = {
 
   deactivate: async (id: number) => {
     const response = await api.patch(`/users/${id}/deactivate`);
+    return response.data;
+  },
+
+  adminResetPassword: async (id: number, newPassword: string) => {
+    const response = await api.put(`/users/${id}/admin-reset-password`, { new_password: newPassword });
     return response.data;
   },
 
