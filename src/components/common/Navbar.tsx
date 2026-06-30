@@ -1,6 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { notificationService } from '../../services/api';
 import {
   AppBar,
   Toolbar,
@@ -14,6 +16,11 @@ import {
   Badge,
   Chip,
   Divider,
+  List,
+  ListItemButton,
+  ListItemText,
+  Button,
+  CircularProgress,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -37,11 +44,50 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
   </MenuItem>
   const { user, tenant, logout } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+  const [notifAnchorEl, setNotifAnchorEl] = React.useState<null | HTMLElement>(null);
 
-  // Debug logs
-  console.log('Navbar - tenant:', tenant);
-  console.log('Navbar - user:', user);
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['notifications-unread-count'],
+    queryFn: notificationService.getUnreadCount,
+    refetchInterval: 30000,
+  });
+
+  const { data: notifications, isLoading: notificationsLoading } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: notificationService.getAll,
+    enabled: !!notifAnchorEl,
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: number) => notificationService.markRead(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+    },
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: notificationService.markAllRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+    },
+  });
+
+  const handleNotifOpen = (event: React.MouseEvent<HTMLElement>) => setNotifAnchorEl(event.currentTarget);
+  const handleNotifClose = () => setNotifAnchorEl(null);
+
+  const timeAgo = (dateStr: string) => {
+    const diffMs = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -162,12 +208,73 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
           </Tooltip>
 
           <Tooltip title="Notifications">
-            <IconButton color="inherit" size="small">
-              <Badge badgeContent={0} color="error">
+            <IconButton color="inherit" size="small" onClick={handleNotifOpen}>
+              <Badge badgeContent={unreadCount} color="error" max={99}>
                 <NotificationsIcon />
               </Badge>
             </IconButton>
           </Tooltip>
+
+          <Menu
+            anchorEl={notifAnchorEl}
+            open={Boolean(notifAnchorEl)}
+            onClose={handleNotifClose}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            slotProps={{ paper: { sx: { width: 380, maxHeight: 480 } } }}
+          >
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Notifications</Typography>
+              {!!unreadCount && (
+                <Button size="small" sx={{ textTransform: 'none' }} onClick={() => markAllReadMutation.mutate()}>
+                  Mark all read
+                </Button>
+              )}
+            </Box>
+            <Divider />
+            {notificationsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : !notifications || notifications.length === 0 ? (
+              <Box sx={{ py: 4, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary">No notifications yet</Typography>
+              </Box>
+            ) : (
+              <List sx={{ p: 0 }}>
+                {notifications.map((n: any) => (
+                  <ListItemButton
+                    key={n.id}
+                    onClick={() => { if (!n.is_read) markReadMutation.mutate(n.id); }}
+                    sx={{
+                      alignItems: 'flex-start',
+                      borderLeft: n.is_read ? 'none' : '3px solid',
+                      borderLeftColor: 'primary.main',
+                      backgroundColor: n.is_read ? 'transparent' : 'action.hover',
+                    }}
+                  >
+                    <ListItemText
+                      primary={
+                        <Typography variant="body2" sx={{ fontWeight: n.is_read ? 400 : 600 }}>
+                          {n.title}
+                        </Typography>
+                      }
+                      secondary={
+                        <>
+                          <Typography variant="caption" color="text.secondary" component="span" sx={{ display: 'block' }}>
+                            {n.message}
+                          </Typography>
+                          <Typography variant="caption" color="text.disabled" component="span">
+                            {timeAgo(n.created_at)}
+                          </Typography>
+                        </>
+                      }
+                    />
+                  </ListItemButton>
+                ))}
+              </List>
+            )}
+          </Menu>
 
           <Typography variant="body2" sx={{ display: { xs: 'none', md: 'block' }, color: 'text.secondary', mx: 1 }}>
             {user?.first_name} {user?.last_name}

@@ -201,6 +201,29 @@ export const userService = {
   },
 };
 
+// ============ NOTIFICATION SERVICE ============
+export const notificationService = {
+  getAll: async () => {
+    const response = await api.get('/notifications/');
+    return response.data;
+  },
+
+  getUnreadCount: async (): Promise<number> => {
+    const response = await api.get('/notifications/unread-count');
+    return response.data.count;
+  },
+
+  markRead: async (id: number) => {
+    const response = await api.put(`/notifications/${id}/read`);
+    return response.data;
+  },
+
+  markAllRead: async () => {
+    const response = await api.put('/notifications/read-all');
+    return response.data;
+  },
+};
+
 // ============ EMPLOYEE SERVICE ============
 export const employeeService = {
   getAll: async () => {
