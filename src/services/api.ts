@@ -176,6 +176,14 @@ export const userService = {
     const response = await api.patch(`/users/${id}/deactivate`);
     return response.data;
   },
+
+  changePassword: async (id: number, oldPassword: string, newPassword: string) => {
+    const response = await api.put(`/users/${id}/change-password`, {
+      old_password: oldPassword,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
 };
 
 // ============ EMPLOYEE SERVICE ============
