@@ -210,22 +210,6 @@ const Login: React.FC = () => {
               }}
             />
 
-            <Box sx={{ textAlign: 'right', mt: 0.5 }}>
-              <Button
-                component={RouterLink}
-                to="/forgot-password"
-                size="small"
-                sx={{
-                  textTransform: 'none',
-                  fontWeight: 500,
-                  color: '#667eea',
-                  '&:hover': { color: '#764ba2' },
-                }}
-              >
-                Forgot password?
-              </Button>
-            </Box>
-
             <Button
               fullWidth
               type="submit"
@@ -233,8 +217,8 @@ const Login: React.FC = () => {
               disabled={loading}
               size="large"
               sx={{
-                mt: 1,
-                mb: 2,
+                mt: 3,
+                mb: 1,
                 py: 1.5,
                 borderRadius: 2,
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -253,7 +237,23 @@ const Login: React.FC = () => {
             </Button>
           </form>
 
-          <Box sx={{ textAlign: 'center', mt: 2 }}>
+          <Box sx={{ textAlign: 'center' }}>
+            <Button
+              component={RouterLink}
+              to="/forgot-password"
+              size="small"
+              sx={{
+                textTransform: 'none',
+                fontWeight: 500,
+                color: '#667eea',
+                '&:hover': { color: '#764ba2' },
+              }}
+            >
+              Forgot password?
+            </Button>
+          </Box>
+
+          <Box sx={{ textAlign: 'center', mt: 1 }}>
             <Typography variant="body2" color="textSecondary">
               Don't have an account?{' '}
               <Button
