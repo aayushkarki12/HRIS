@@ -210,6 +210,22 @@ const Login: React.FC = () => {
               }}
             />
 
+            <Box sx={{ textAlign: 'right', mt: 0.5 }}>
+              <Button
+                component={RouterLink}
+                to="/forgot-password"
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 500,
+                  color: '#667eea',
+                  '&:hover': { color: '#764ba2' },
+                }}
+              >
+                Forgot password?
+              </Button>
+            </Box>
+
             <Button
               fullWidth
               type="submit"
@@ -217,7 +233,7 @@ const Login: React.FC = () => {
               disabled={loading}
               size="large"
               sx={{
-                mt: 3,
+                mt: 1,
                 mb: 2,
                 py: 1.5,
                 borderRadius: 2,

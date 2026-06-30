@@ -28,6 +28,8 @@ import {
   Refresh as RefreshIcon,
   Block as DeactivateIcon,
   CheckCircle as ActivateIcon,
+  LockReset as LockResetIcon,
+  ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { userService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -44,6 +46,9 @@ const Users: React.FC = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [pendingRoleChange, setPendingRoleChange] = useState<{ id: number; name: string; from: string; to: string } | null>(null);
+  const [resetTarget, setResetTarget] = useState<{ id: number; username: string } | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [resultPassword, setResultPassword] = useState<string | null>(null);
 
   const { data: users, isLoading, refetch } = useQuery({
     queryKey: ['users', search],
@@ -81,6 +86,28 @@ const Users: React.FC = () => {
     },
     onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to deactivate user'),
   });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ id, password }: { id: number; password: string }) => userService.adminResetPassword(id, password),
+    onSuccess: (_data, variables) => {
+      toast.success('Password reset');
+      setResultPassword(variables.password);
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to reset password'),
+  });
+
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let pwd = '';
+    for (let i = 0; i < 12; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+    setNewPassword(pwd);
+  };
+
+  const closeResetDialog = () => {
+    setResetTarget(null);
+    setNewPassword('');
+    setResultPassword(null);
+  };
 
   if (!isAdmin) {
     return <AccessDenied />;
@@ -172,6 +199,9 @@ const Users: React.FC = () => {
                     <Chip label={u.is_active ? 'Active' : 'Inactive'} color={u.is_active ? 'success' : 'default'} size="small" />
                   </TableCell>
                   <TableCell align="right">
+                    <IconButton size="small" color="primary" onClick={() => setResetTarget({ id: u.id, username: u.username })} title="Reset Password">
+                      <LockResetIcon fontSize="small" />
+                    </IconButton>
                     {!isSelf && (
                       u.is_active ? (
                         <IconButton size="small" color="error" onClick={() => { if (window.confirm(`Deactivate ${u.username}?`)) deactivateMutation.mutate(u.id); }} title="Deactivate">
@@ -207,6 +237,64 @@ const Users: React.FC = () => {
           <Button variant="contained" color="warning" onClick={confirmRoleChange} disabled={roleMutation.isPending}>
             {roleMutation.isPending ? 'Updating...' : 'Confirm'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!resetTarget} onClose={closeResetDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Reset Password{resetTarget ? ` - ${resetTarget.username}` : ''}</DialogTitle>
+        <DialogContent>
+          {resultPassword ? (
+            <Box sx={{ mt: 1 }}>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Password reset. Share this with {resetTarget?.username} securely - it won't be shown again.
+              </Alert>
+              <TextField
+                fullWidth
+                value={resultPassword}
+                InputProps={{
+                  readOnly: true,
+                  endAdornment: (
+                    <IconButton onClick={() => { navigator.clipboard.writeText(resultPassword); toast.success('Copied'); }} size="small">
+                      <CopyIcon fontSize="small" />
+                    </IconButton>
+                  ),
+                }}
+              />
+            </Box>
+          ) : (
+            <Box sx={{ mt: 1 }}>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                This sets a new password without needing the old one, and logs the user out of all active sessions.
+              </Alert>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  label="New Password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  helperText="At least 8 characters, with uppercase, lowercase, and a number"
+                />
+                <Button onClick={generatePassword} variant="outlined" sx={{ whiteSpace: 'nowrap' }}>Generate</Button>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {resultPassword ? (
+            <Button onClick={closeResetDialog} variant="contained">Done</Button>
+          ) : (
+            <>
+              <Button onClick={closeResetDialog}>Cancel</Button>
+              <Button
+                variant="contained"
+                color="warning"
+                disabled={!newPassword || resetPasswordMutation.isPending}
+                onClick={() => resetTarget && resetPasswordMutation.mutate({ id: resetTarget.id, password: newPassword })}
+              >
+                {resetPasswordMutation.isPending ? 'Resetting...' : 'Reset Password'}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
     </Box>
