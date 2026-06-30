@@ -22,8 +22,10 @@ import {
   Save as SaveIcon,
   Edit as EditIcon,
   Cancel as CancelIcon,
+  Lock as LockIcon,
 } from '@mui/icons-material';
-import { employeeService } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import { employeeService, userService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const profileSchema = z.object({
@@ -50,13 +52,26 @@ const profileSchema = z.object({
 
 type ProfileFormData = z.infer<typeof profileSchema>;
 
+const passwordSchema = z.object({
+  old_password: z.string().min(1, 'Current password is required'),
+  new_password: z.string().min(8, 'New password must be at least 8 characters'),
+  confirm_password: z.string().min(1, 'Please confirm your new password'),
+}).refine((data) => data.new_password === data.confirm_password, {
+  message: "Passwords don't match",
+  path: ['confirm_password'],
+});
+
+type PasswordFormData = z.infer<typeof passwordSchema>;
+
 const Profile: React.FC = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [passwordError, setPasswordError] = useState<string>('');
 
   // Fetch profile data
   const { data: profile, isLoading, refetch } = useQuery({
@@ -99,6 +114,46 @@ const Profile: React.FC = () => {
       certifications: '',
     },
   });
+
+  // Change password form
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    reset: resetPasswordForm,
+    formState: { errors: passwordErrors, isSubmitting: isChangingPassword },
+  } = useForm<PasswordFormData>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: { old_password: '', new_password: '', confirm_password: '' },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: (data: PasswordFormData) => {
+      if (!user) throw new Error('Not logged in');
+      return userService.changePassword(user.id, data.old_password, data.new_password);
+    },
+    onSuccess: async () => {
+      toast.success('Password changed. Please log in again with your new password.');
+      resetPasswordForm();
+      await logout();
+      navigate('/login');
+    },
+    onError: (error: any) => {
+      const detail = error.response?.data?.detail;
+      let msg = 'Failed to change password';
+      if (typeof detail === 'string') {
+        msg = detail;
+      } else if (Array.isArray(detail)) {
+        msg = detail.map((d: any) => d.msg || 'Invalid value').join(', ');
+      }
+      setPasswordError(msg);
+      toast.error(msg);
+    },
+  });
+
+  const onPasswordSubmit = (data: PasswordFormData) => {
+    setPasswordError('');
+    changePasswordMutation.mutate(data);
+  };
 
   // Update form when profile data loads
   useEffect(() => {
@@ -629,6 +684,88 @@ const Profile: React.FC = () => {
           )}
         </Grid>
       </form>
+
+      {/* Change Password */}
+      <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', mt: 3 }}>
+        <CardContent sx={{ p: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <LockIcon color="action" />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Change Password
+            </Typography>
+          </Box>
+          <Divider sx={{ mb: 3 }} />
+
+          {passwordError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPasswordError('')}>
+              {passwordError}
+            </Alert>
+          )}
+
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Changing your password will log you out of all devices, including this one. You'll need to log back in with your new password.
+          </Alert>
+
+          <form onSubmit={handlePasswordSubmit(onPasswordSubmit)}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  label="Current Password"
+                  type="password"
+                  {...registerPassword('old_password')}
+                  error={!!passwordErrors.old_password}
+                  helperText={passwordErrors.old_password?.message}
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  label="New Password"
+                  type="password"
+                  {...registerPassword('new_password')}
+                  error={!!passwordErrors.new_password}
+                  helperText={passwordErrors.new_password?.message || 'At least 8 characters, with uppercase, lowercase, and a number'}
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  label="Confirm New Password"
+                  type="password"
+                  {...registerPassword('confirm_password')}
+                  error={!!passwordErrors.confirm_password}
+                  helperText={passwordErrors.confirm_password?.message}
+                  size="small"
+                />
+              </Grid>
+            </Grid>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={isChangingPassword}
+                startIcon={<LockIcon />}
+                sx={{
+                  px: 4,
+                  py: 1.5,
+                  borderRadius: 2,
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 8px 25px rgba(102, 126, 234, 0.4)',
+                  },
+                }}
+              >
+                {isChangingPassword ? <CircularProgress size={24} /> : 'Change Password'}
+              </Button>
+            </Box>
+          </form>
+        </CardContent>
+      </Card>
     </Box>
   );
 };

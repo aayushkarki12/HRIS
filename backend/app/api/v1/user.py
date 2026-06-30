@@ -5,7 +5,7 @@ from typing import List, Optional
 from ...core.database import get_db
 from ...core.dependencies import get_current_admin_user, get_current_active_user
 from ...models.user import User
-from ...schemas.user import UserResponse, UserUpdate
+from ...schemas.user import UserResponse, UserUpdate, ChangePasswordRequest
 from ...core.security import get_password_hash
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -124,36 +124,37 @@ def update_user(
 @router.put("/{user_id}/change-password")
 def change_password(
     user_id: int,
-    old_password: str,
-    new_password: str,
+    data: ChangePasswordRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Change user password.
+    Change user password. Self-service only - even an admin cannot change
+    another user's password this way (that would require knowing their
+    current password, which nobody but the user themselves should know).
     """
     if current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to change this user's password"
         )
-    
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     # Verify old password
     from ...core.security import verify_password, validate_password_strength
-    if not verify_password(old_password, user.hashed_password):
+    if not verify_password(data.old_password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect current password"
         )
 
-    password_error = validate_password_strength(new_password)
+    password_error = validate_password_strength(data.new_password)
     if password_error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
 
@@ -162,7 +163,7 @@ def change_password(
     # otherwise a leaked/stolen session would survive the user's attempt
     # to secure their account.
     from ...models.refresh_token import RefreshToken
-    user.hashed_password = get_password_hash(new_password)
+    user.hashed_password = get_password_hash(data.new_password)
     db.query(RefreshToken).filter(
         RefreshToken.user_id == user.id,
         RefreshToken.revoked == False
