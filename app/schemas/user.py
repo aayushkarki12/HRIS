@@ -16,12 +16,18 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
+    """
+    Schema for self-registration. Deliberately has NO `role` field - the
+    register endpoint always assigns role="user" regardless of what's sent,
+    but keeping `role` out of this schema entirely means there's nothing for
+    a future code change to accidentally start honoring. Promoting someone to
+    manager/admin is only possible via PUT /users/{id} by an existing admin.
+    """
     password: str = Field(..., min_length=8, max_length=100)
     phone: Optional[str] = Field(None, min_length=10, max_length=20)
     department: str = Field("General", min_length=2, max_length=50)
     position: str = Field("Staff", min_length=2, max_length=50)
     join_date: Optional[date] = None
-    role: Optional[str] = Field("user", pattern="^(admin|manager|user)$")
     tenant_subdomain: str = Field("default", min_length=2, max_length=50)
 
     @validator('password')

@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime, date
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant
+from ...core.dependencies import get_current_admin_user, get_current_manager_user, get_current_tenant
 from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.tenant import Tenant
@@ -44,7 +44,7 @@ def _update_invoice_status(invoice):
 
 @router.get("/stats")
 def get_invoice_stats(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -75,7 +75,7 @@ def get_invoices(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     status_filter: Optional[str] = Query(None, alias="status"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -164,7 +164,7 @@ def create_invoice(
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
 def get_invoice(
     invoice_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):

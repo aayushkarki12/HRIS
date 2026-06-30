@@ -95,14 +95,23 @@ def update_user(
     
     # Update fields
     update_data = user_data.model_dump(exclude_unset=True)
-    
+
     # If role is being updated, only admin can do it
     if 'role' in update_data and current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admin can update role"
         )
-    
+
+    # An admin must never be able to change their own role, even by mistake -
+    # this would either lock them out of admin-only endpoints or (if they're
+    # the only admin in the tenant) leave nobody able to promote anyone back.
+    if 'role' in update_data and current_user.id == user_id and update_data['role'] != current_user.role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot change your own role. Ask another admin to do it."
+        )
+
     for key, value in update_data.items():
         setattr(user, key, value)
     

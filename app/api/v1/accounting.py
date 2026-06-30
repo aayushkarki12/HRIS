@@ -6,7 +6,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant
+from ...core.dependencies import get_current_admin_user, get_current_manager_user, get_current_tenant
 from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.tenant import Tenant
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/accounting", tags=["accounting"])
 
 @router.get("/accounts/tree", response_model=List[AccountTreeResponse])
 def get_account_tree(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -66,7 +66,7 @@ def get_account_tree(
 
 @router.get("/accounts/types")
 def get_account_types(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
 ):
     """Get available account types."""
     return [
@@ -85,7 +85,7 @@ def get_accounts(
     account_type: Optional[str] = None,
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -154,7 +154,7 @@ def create_account(
 @router.get("/accounts/{account_id}", response_model=AccountResponse)
 def get_account(
     account_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -280,7 +280,7 @@ def get_journal_entries(
     reference_type: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -384,7 +384,7 @@ def create_journal_entry(
 @router.get("/journal-entries/{entry_id}", response_model=JournalEntryResponse)
 def get_journal_entry(
     entry_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -578,7 +578,7 @@ def get_general_ledger(
     end_date: Optional[str] = None,
     account_id: Optional[int] = None,
     account_type: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -668,7 +668,7 @@ def get_general_ledger(
 def get_ledger_summary(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -768,7 +768,7 @@ def _get_account_balances(db, tenant_id, end_date=None, start_date=None):
 def get_trial_balance(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -792,7 +792,7 @@ def get_trial_balance(
 def get_income_statement(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -822,7 +822,7 @@ def get_income_statement(
 @router.get("/reports/balance-sheet")
 def get_balance_sheet(
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -865,7 +865,7 @@ def get_balance_sheet(
 def get_cash_flow(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_manager_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
