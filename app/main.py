@@ -26,6 +26,7 @@ from .api import (
     invoice_router,
     work_locations_router,
     audit_logs_router,
+    notifications_router,
 )
 
 app = FastAPI(
@@ -70,6 +71,7 @@ app.include_router(expense_router, prefix="/api/v1")
 app.include_router(invoice_router, prefix="/api/v1")
 app.include_router(work_locations_router, prefix="/api/v1")
 app.include_router(audit_logs_router, prefix="/api/v1")
+app.include_router(notifications_router, prefix="/api/v1")
 
 @app.get("/")
 def root():

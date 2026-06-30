@@ -10,6 +10,7 @@ from ...core.dependencies import (
     get_current_tenant, get_current_employee, get_current_manager_user
 )
 from ...core.audit import record_audit_log
+from ...core.notifications import notify_user
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
@@ -378,6 +379,15 @@ def pay_expense_claim(
         record_audit_log(db, tenant.id, current_user.id, "pay", "expense_claim", claim.id,
                           f"Paid {claim.claim_number} ({claim.total_amount})")
 
+        claim_employee = db.query(Employee).filter(Employee.id == claim.employee_id).first()
+        if claim_employee and claim_employee.user_id:
+            notify_user(
+                db, tenant.id, claim_employee.user_id,
+                title="Expense claim paid",
+                message=f"Your expense claim {claim.claim_number} for {claim.total_amount} has been approved and paid.",
+                entity_type="expense_claim", entity_id=claim.id,
+            )
+
         db.commit()
 
         result = db.query(ExpenseClaim).options(
@@ -418,6 +428,16 @@ def reject_expense_claim(
         claim.rejected_at = datetime.now()
         claim.rejection_reason = reason
         record_audit_log(db, tenant.id, current_user.id, "reject", "expense_claim", claim.id, reason)
+
+        claim_employee = db.query(Employee).filter(Employee.id == claim.employee_id).first()
+        if claim_employee and claim_employee.user_id:
+            notify_user(
+                db, tenant.id, claim_employee.user_id,
+                title="Expense claim rejected",
+                message=f"Your expense claim {claim.claim_number} for {claim.total_amount} was rejected." + (f" Reason: {reason}" if reason else ""),
+                entity_type="expense_claim", entity_id=claim.id,
+            )
+
         db.commit()
         db.refresh(claim)
         return claim

@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
 from ...core.audit import record_audit_log
+from ...core.notifications import notify_user
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
@@ -227,6 +228,15 @@ def approve_leave(
     record_audit_log(db, tenant.id, current_user.id, "approve", "leave", leave.id,
                       f"Approved leave for employee {leave.employee_id} ({leave.total_days} days)")
 
+    leave_employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
+    if leave_employee and leave_employee.user_id:
+        notify_user(
+            db, tenant.id, leave_employee.user_id,
+            title="Leave request approved",
+            message=f"Your leave request for {leave.total_days} day(s) starting {leave.start_date} has been approved.",
+            entity_type="leave", entity_id=leave.id,
+        )
+
     db.commit()
     db.refresh(leave)
 
@@ -267,6 +277,15 @@ def reject_leave(
         leave.reason = (leave.reason or "") + f"\n\nRejection reason: {reason}"
 
     record_audit_log(db, tenant.id, current_user.id, "reject", "leave", leave.id, reason)
+
+    leave_employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
+    if leave_employee and leave_employee.user_id:
+        notify_user(
+            db, tenant.id, leave_employee.user_id,
+            title="Leave request rejected",
+            message=f"Your leave request for {leave.total_days} day(s) starting {leave.start_date} was rejected." + (f" Reason: {reason}" if reason else ""),
+            entity_type="leave", entity_id=leave.id,
+        )
 
     db.commit()
     db.refresh(leave)
