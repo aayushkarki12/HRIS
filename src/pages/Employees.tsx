@@ -43,7 +43,7 @@ const employeeSchema = z.object({
   phone: z.string().min(10, 'Phone number is required'),
   department: z.string().min(2, 'Department is required'),
   position: z.string().min(2, 'Position is required'),
-  join_date: z.string().min(1, 'Join date is required'),
+  joining_date: z.string().min(1, 'Join date is required'),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -127,7 +127,7 @@ const Employees: React.FC = () => {
     setValue('phone', employee.phone);
     setValue('department', employee.department);
     setValue('position', employee.position);
-    setValue('join_date', employee.join_date.split('T')[0]);
+    setValue('joining_date', employee.joining_date.split('T')[0]);
     setIsModalOpen(true);
     setError('');
   };
@@ -325,9 +325,9 @@ const Employees: React.FC = () => {
               fullWidth
               label="Join Date"
               type="date"
-              {...register('join_date')}
-              error={!!errors.join_date}
-              helperText={errors.join_date?.message}
+              {...register('joining_date')}
+              error={!!errors.joining_date}
+              helperText={errors.joining_date?.message}
               margin="normal"
               size="small"
               slotProps={{

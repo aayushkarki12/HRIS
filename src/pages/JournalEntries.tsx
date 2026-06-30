@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import { accountingService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import AccessDenied from '../components/common/AccessDenied';
 
 interface LineForm {
   account_id: string;
@@ -50,7 +51,7 @@ const emptyLine: LineForm = { account_id: '', description: '', debit: '', credit
 const fmt = (n: number) => `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const JournalEntries: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isManager } = useAuth();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState<string>('');
@@ -210,6 +211,10 @@ const JournalEntries: React.FC = () => {
     const account = accounts?.find((a: any) => a.id === accountId);
     return account ? `${account.code} - ${account.name}` : `Account #${accountId}`;
   };
+
+  if (!isManager) {
+    return <AccessDenied />;
+  }
 
   if (isLoading) {
     return (

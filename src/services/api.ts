@@ -155,6 +155,29 @@ export const authService = {
   },
 };
 
+// ============ USER SERVICE (admin: role & account management) ============
+export const userService = {
+  getAll: async (search?: string) => {
+    const response = await api.get('/users/', { params: { search } });
+    return response.data;
+  },
+
+  updateRole: async (id: number, role: 'admin' | 'manager' | 'user') => {
+    const response = await api.put(`/users/${id}`, { role });
+    return response.data;
+  },
+
+  activate: async (id: number) => {
+    const response = await api.patch(`/users/${id}/activate`);
+    return response.data;
+  },
+
+  deactivate: async (id: number) => {
+    const response = await api.patch(`/users/${id}/deactivate`);
+    return response.data;
+  },
+};
+
 // ============ EMPLOYEE SERVICE ============
 export const employeeService = {
   getAll: async () => {

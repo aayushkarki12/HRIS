@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { invoiceService, projectService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import AccessDenied from '../components/common/AccessDenied';
 
 const fmt = (n: number) => `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -45,7 +46,7 @@ interface LineForm { description: string; quantity: string; unit_price: string; 
 const emptyLine: LineForm = { description: '', quantity: '1', unit_price: '' };
 
 const Invoices: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isManager } = useAuth();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [payModalOpen, setPayModalOpen] = useState(false);
@@ -155,6 +156,8 @@ const Invoices: React.FC = () => {
   const subtotal = lines.reduce((s, l) => s + ((parseFloat(l.quantity) || 1) * (parseFloat(l.unit_price) || 0)), 0);
   const taxAmt = subtotal * ((parseFloat(formData.tax_rate) || 0) / 100);
   const filteredInvoices = invoices?.filter((i: any) => selectedStatus === 'all' || i.status === selectedStatus);
+
+  if (!isManager) return <AccessDenied />;
 
   if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}><CircularProgress /></Box>;
 
