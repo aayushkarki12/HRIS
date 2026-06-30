@@ -49,6 +49,37 @@ api.interceptors.request.use(
   }
 );
 
+const clearSession = (): void => {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('tenant');
+};
+
+// Concurrent requests that all 401 at once should trigger exactly one refresh
+// call, not one each - this dedupes them onto a single in-flight promise.
+let refreshPromise: Promise<string | null> | null = null;
+
+const attemptTokenRefresh = async (): Promise<string | null> => {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${API_URL}/auth/refresh`, { refresh_token: refreshToken })
+      .then((res) => {
+        localStorage.setItem('access_token', res.data.access_token);
+        localStorage.setItem('refresh_token', res.data.refresh_token);
+        return res.data.access_token as string;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+};
+
 api.interceptors.response.use(
   (response) => {
     console.log('Response:', {
@@ -57,18 +88,25 @@ api.interceptors.response.use(
     });
     return response;
   },
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     console.error('API Error:', {
       url: error.config?.url,
       status: error.response?.status,
       data: error.response?.data,
       message: error.message,
     });
-    
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('tenant');
+
+    const originalRequest = error.config as (typeof error.config & { _retried?: boolean }) | undefined;
+
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retried) {
+      originalRequest._retried = true;
+      const newAccessToken = await attemptTokenRefresh();
+      if (newAccessToken) {
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return api(originalRequest);
+      }
+      clearSession();
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -82,11 +120,11 @@ export const authService = {
       const formData = new URLSearchParams();
       formData.append('username', credentials.email);
       formData.append('password', credentials.password);
-      
+
       if (credentials.tenantId) {
         formData.append('tenant_id', String(credentials.tenantId));
       }
-      
+
       const response = await api.post<AuthResponse>('/auth/login', formData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -99,10 +137,16 @@ export const authService = {
     }
   },
 
-  logout: (): void => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('tenant');
+  logout: async (): Promise<void> => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      try {
+        await api.post('/auth/logout', { refresh_token: refreshToken });
+      } catch {
+        // Best-effort - clear local session regardless of whether the server call succeeds.
+      }
+    }
+    clearSession();
   },
 
   getCurrentUser: (): any => {
@@ -419,6 +463,29 @@ export const attendanceService = {
   },
 };
 
+// ============ WORK LOCATION SERVICE ============
+export const workLocationService = {
+  getAll: async () => {
+    const response = await api.get('/work-locations/');
+    return response.data;
+  },
+
+  create: async (data: any) => {
+    const response = await api.post('/work-locations/', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: any) => {
+    const response = await api.put(`/work-locations/${id}`, data);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    const response = await api.delete(`/work-locations/${id}`);
+    return response.data;
+  },
+};
+
 // ============ TIMESHEET SERVICE ============
 export const timesheetService = {
   getMyTimesheets: async () => {
@@ -465,6 +532,258 @@ export const timesheetService = {
   },
 };
 
+// ============ ACCOUNTING SERVICE ============
+export const accountingService = {
+  getAccounts: async (params?: { account_type?: string; search?: string; is_active?: boolean }) => {
+    const response = await api.get('/accounting/accounts', { params });
+    return response.data;
+  },
+
+  getAccountTree: async () => {
+    const response = await api.get('/accounting/accounts/tree');
+    return response.data;
+  },
+
+  getAccountTypes: async () => {
+    const response = await api.get('/accounting/accounts/types');
+    return response.data;
+  },
+
+  getAccountById: async (id: number) => {
+    const response = await api.get(`/accounting/accounts/${id}`);
+    return response.data;
+  },
+
+  createAccount: async (data: any) => {
+    const response = await api.post('/accounting/accounts', data);
+    return response.data;
+  },
+
+  updateAccount: async (id: number, data: any) => {
+    const response = await api.put(`/accounting/accounts/${id}`, data);
+    return response.data;
+  },
+
+  deleteAccount: async (id: number) => {
+    const response = await api.delete(`/accounting/accounts/${id}`);
+    return response.data;
+  },
+
+  // Journal Entries
+  getJournalEntries: async (params?: { status?: string; reference_type?: string; start_date?: string; end_date?: string }) => {
+    const response = await api.get('/accounting/journal-entries', { params });
+    return response.data;
+  },
+
+  getJournalEntryById: async (id: number) => {
+    const response = await api.get(`/accounting/journal-entries/${id}`);
+    return response.data;
+  },
+
+  createJournalEntry: async (data: any) => {
+    const response = await api.post('/accounting/journal-entries', data);
+    return response.data;
+  },
+
+  updateJournalEntry: async (id: number, data: any) => {
+    const response = await api.put(`/accounting/journal-entries/${id}`, data);
+    return response.data;
+  },
+
+  postJournalEntry: async (id: number) => {
+    const response = await api.put(`/accounting/journal-entries/${id}/post`);
+    return response.data;
+  },
+
+  deleteJournalEntry: async (id: number) => {
+    const response = await api.delete(`/accounting/journal-entries/${id}`);
+    return response.data;
+  },
+
+  // General Ledger
+  getLedger: async (params?: { start_date?: string; end_date?: string; account_id?: number; account_type?: string }) => {
+    const response = await api.get('/accounting/ledger', { params });
+    return response.data;
+  },
+
+  getLedgerSummary: async (params?: { start_date?: string; end_date?: string }) => {
+    const response = await api.get('/accounting/ledger/summary', { params });
+    return response.data;
+  },
+
+  // Financial Reports
+  getTrialBalance: async (params?: { start_date?: string; end_date?: string }) => {
+    const response = await api.get('/accounting/reports/trial-balance', { params });
+    return response.data;
+  },
+
+  getIncomeStatement: async (params?: { start_date?: string; end_date?: string }) => {
+    const response = await api.get('/accounting/reports/income-statement', { params });
+    return response.data;
+  },
+
+  getBalanceSheet: async (params?: { end_date?: string }) => {
+    const response = await api.get('/accounting/reports/balance-sheet', { params });
+    return response.data;
+  },
+
+  getCashFlow: async (params?: { start_date?: string; end_date?: string }) => {
+    const response = await api.get('/accounting/reports/cash-flow', { params });
+    return response.data;
+  },
+};
+
+// ============ PAYROLL SERVICE ============
+export const payrollService = {
+  getSalaryStructures: async (employeeId?: number) => {
+    const response = await api.get('/payroll/salary-structures', {
+      params: employeeId ? { employee_id: employeeId } : undefined,
+    });
+    return response.data;
+  },
+
+  createSalaryStructure: async (data: any) => {
+    const response = await api.post('/payroll/salary-structures', data);
+    return response.data;
+  },
+
+  updateSalaryStructure: async (id: number, data: any) => {
+    const response = await api.put(`/payroll/salary-structures/${id}`, data);
+    return response.data;
+  },
+
+  getPayrollRuns: async () => {
+    const response = await api.get('/payroll/runs');
+    return response.data;
+  },
+
+  getPayrollRun: async (id: number) => {
+    const response = await api.get(`/payroll/runs/${id}`);
+    return response.data;
+  },
+
+  createPayrollRun: async (data: any) => {
+    const response = await api.post('/payroll/runs', data);
+    return response.data;
+  },
+
+  processPayrollRun: async (id: number) => {
+    const response = await api.put(`/payroll/runs/${id}/process`);
+    return response.data;
+  },
+
+  deletePayrollRun: async (id: number) => {
+    const response = await api.delete(`/payroll/runs/${id}`);
+    return response.data;
+  },
+
+  getMyPayslips: async () => {
+    const response = await api.get('/payroll/my-payslips');
+    return response.data;
+  },
+};
+
+// ============ EXPENSE SERVICE ============
+export const expenseService = {
+  getAll: async (params?: { status?: string }) => {
+    const response = await api.get('/expenses', { params });
+    return response.data;
+  },
+
+  getMyExpenses: async () => {
+    const response = await api.get('/expenses/my');
+    return response.data;
+  },
+
+  getPending: async () => {
+    const response = await api.get('/expenses/pending');
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/expenses/${id}`);
+    return response.data;
+  },
+
+  create: async (data: any) => {
+    const response = await api.post('/expenses', data);
+    return response.data;
+  },
+
+  submit: async (id: number) => {
+    const response = await api.put(`/expenses/${id}/submit`);
+    return response.data;
+  },
+
+  managerApprove: async (id: number) => {
+    const response = await api.put(`/expenses/${id}/manager-approve`);
+    return response.data;
+  },
+
+  accountingApprove: async (id: number) => {
+    const response = await api.put(`/expenses/${id}/accounting-approve`);
+    return response.data;
+  },
+
+  pay: async (id: number) => {
+    const response = await api.put(`/expenses/${id}/pay`);
+    return response.data;
+  },
+
+  reject: async (id: number, reason?: string) => {
+    const response = await api.put(`/expenses/${id}/reject`, null, { params: { reason } });
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    const response = await api.delete(`/expenses/${id}`);
+    return response.data;
+  },
+};
+
+// ============ INVOICE SERVICE ============
+export const invoiceService = {
+  getAll: async (params?: { status?: string }) => {
+    const response = await api.get('/invoices/', { params });
+    return response.data;
+  },
+
+  getStats: async () => {
+    const response = await api.get('/invoices/stats');
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/invoices/${id}`);
+    return response.data;
+  },
+
+  create: async (data: any) => {
+    const response = await api.post('/invoices/', data);
+    return response.data;
+  },
+
+  send: async (id: number) => {
+    const response = await api.put(`/invoices/${id}/send`);
+    return response.data;
+  },
+
+  recordPayment: async (id: number, data: any) => {
+    const response = await api.post(`/invoices/${id}/payments`, data);
+    return response.data;
+  },
+
+  cancel: async (id: number) => {
+    const response = await api.put(`/invoices/${id}/cancel`);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    const response = await api.delete(`/invoices/${id}`);
+    return response.data;
+  },
+};
+
 // ============ TENANT SERVICE ============
 export const tenantService = {
   getMyTenant: async () => {
@@ -472,10 +791,19 @@ export const tenantService = {
     return response.data;
   },
 
-  updateMyTenant: async (data: any) => {
-    const response = await api.put('/tenants/me', data);
-    return response.data;
-  },
+ updateMyTenant: async (data: any) => {
+  // Get tenant ID from localStorage or context
+  const tenantStr = localStorage.getItem('tenant');
+  const tenant = tenantStr ? JSON.parse(tenantStr) : null;
+  const tenantId = tenant?.id;
+  
+  if (!tenantId) {
+    throw new Error('Tenant ID not found');
+  }
+  
+  const response = await api.put(`/tenants/${tenantId}`, data);
+  return response.data;
+},
 
   getStats: async () => {
     const response = await api.get('/tenants/me/stats');

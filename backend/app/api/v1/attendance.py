@@ -1,9 +1,9 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date, datetime, timedelta
 import pytz
-import traceback
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
@@ -11,8 +11,10 @@ from ...core.location import get_location_status
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
-from ...models.attendance import Attendance, Break
+from ...models.attendance import Attendance, Break, WorkLocation
 from ...schemas.attendance import AttendanceResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -60,8 +62,7 @@ def get_my_attendance(
         
         return query.order_by(Attendance.date.desc()).all()
     except Exception as e:
-        print(f"Error in get_my_attendance: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in get_my_attendance: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/stats", response_model=dict)
@@ -113,8 +114,7 @@ def get_attendance_stats(
             }
         }
     except Exception as e:
-        print(f"Error in get_attendance_stats: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in get_attendance_stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/clock-in")
@@ -138,22 +138,24 @@ def clock_in(
             raise HTTPException(status_code=400, detail="Already clocked in today")
         
         now = get_current_datetime()
-        
-        # Determine location status
+
+        # Determine location status by checking the office and any active work locations
         location_status = "unknown"
         location_label = "Location not provided"
+        work_location_id = None
+        location_name = None
         if latitude and longitude:
-            if tenant.office_latitude and tenant.office_longitude:
-                status, label = get_location_status(latitude, longitude, tenant)
-                location_status = status
-                location_label = label
-            else:
-                location_status = "unknown"
-                location_label = "Office location not configured"
-        
+            work_locations = db.query(WorkLocation).filter(
+                WorkLocation.tenant_id == tenant.id,
+                WorkLocation.is_active == True
+            ).all()
+            location_status, location_label, work_location_id, location_name = get_location_status(
+                latitude, longitude, tenant, work_locations
+            )
+
         # Determine attendance status based on clock-in time
         status = determine_status_from_time(now)
-        
+
         if not existing:
             attendance = Attendance(
                 employee_id=current_employee.id,
@@ -163,7 +165,9 @@ def clock_in(
                 tenant_id=tenant.id,
                 clock_in_latitude=latitude,
                 clock_in_longitude=longitude,
-                location_status=location_status
+                location_status=location_status,
+                work_location_id=work_location_id,
+                location_name=location_name
             )
             db.add(attendance)
             db.commit()
@@ -174,6 +178,7 @@ def clock_in(
                 "status": status,
                 "location_status": location_status,
                 "location_label": location_label,
+                "location_name": location_name,
                 "attendance_id": attendance.id
             }
         else:
@@ -181,6 +186,8 @@ def clock_in(
             existing.clock_in_latitude = latitude
             existing.clock_in_longitude = longitude
             existing.location_status = location_status
+            existing.work_location_id = work_location_id
+            existing.location_name = location_name
             existing.status = status
             db.commit()
             db.refresh(existing)
@@ -190,6 +197,7 @@ def clock_in(
                 "status": status,
                 "location_status": location_status,
                 "location_label": location_label,
+                "location_name": location_name,
                 "attendance_id": existing.id
             }
         
@@ -197,8 +205,7 @@ def clock_in(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in clock_in: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in clock_in: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to clock in: {str(e)}")
 
 @router.post("/clock-out")
@@ -258,8 +265,7 @@ def clock_out(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in clock_out: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in clock_out: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to clock out: {str(e)}")
 
 @router.post("/break/start")
@@ -305,8 +311,7 @@ def start_break(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in start_break: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in start_break: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to start break: {str(e)}")
 
 @router.post("/break/end")
@@ -356,6 +361,5 @@ def end_break(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in end_break: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in end_break: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to end break: {str(e)}")

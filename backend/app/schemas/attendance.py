@@ -49,6 +49,8 @@ class AttendanceResponse(AttendanceBase):
     clock_out_latitude: Optional[float] = None
     clock_out_longitude: Optional[float] = None
     location_status: str = "unknown"
+    work_location_id: Optional[int] = None
+    location_name: Optional[str] = None
     breaks: List[BreakResponse] = []
     created_at: datetime
     updated_at: Optional[datetime] = None

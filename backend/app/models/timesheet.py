@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Float, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Float, Text, Index, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -6,7 +6,11 @@ from ..core.database import Base
 
 class Timesheet(Base):
     __tablename__ = "timesheets"
-    
+    __table_args__ = (
+        UniqueConstraint("employee_id", "week_start_date", name="timesheets_employee_id_week_start_date_key"),
+        Index("ix_timesheets_tenant_week_start", "tenant_id", "week_start_date"),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     week_start_date = Column(Date, nullable=False)

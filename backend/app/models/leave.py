@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Float, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Float, Text, Index, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -29,7 +29,10 @@ class LeaveType(Base):
 
 class Leave(Base):
     __tablename__ = "leaves"
-    
+    __table_args__ = (
+        Index("ix_leaves_tenant_status", "tenant_id", "status"),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     leave_type_id = Column(Integer, ForeignKey("leave_types.id"), nullable=False)
@@ -62,7 +65,10 @@ class Leave(Base):
 
 class LeaveBalance(Base):
     __tablename__ = "leave_balances"
-    
+    __table_args__ = (
+        UniqueConstraint("employee_id", "leave_type_id", "year", name="leave_balances_employee_id_leave_type_id_year_key"),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     leave_type_id = Column(Integer, ForeignKey("leave_types.id"), nullable=False)

@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import logging
 import os
 import uuid
+
+logger = logging.getLogger(__name__)
+
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
@@ -40,15 +45,26 @@ async def upload_document(
     allowed_types = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="File type not allowed")
-    
+
+    # Validate file size without reading the whole thing into memory first.
+    # UploadFile wraps a SpooledTemporaryFile, so we can seek to check size.
+    file.file.seek(0, os.SEEK_END)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    if file_size > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"File too large. Maximum allowed size is {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)}MB."
+        )
+
     # Generate unique filename
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     file_path = f"uploads/documents/{current_employee.id}/{unique_filename}"
-    
+
     # Create directory if not exists
     os.makedirs(f"uploads/documents/{current_employee.id}", exist_ok=True)
-    
+
     # Save file
     content = await file.read()
     with open(file_path, "wb") as buffer:
@@ -119,11 +135,15 @@ def delete_document(
         if not employee or document.employee_id != employee.id:
             raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Delete file
+    # Delete file from disk. The DB record is the source of truth, so a missing
+    # or already-deleted file shouldn't block deletion of the record - but we
+    # do want to know about it rather than silently swallowing every error.
     try:
         os.remove(document.file_url)
-    except:
-        pass
+    except FileNotFoundError:
+        logger.warning(f"Document file already missing on disk: {document.file_url}")
+    except OSError as e:
+        logger.error(f"Failed to delete document file {document.file_url}: {e}", exc_info=True)
     
     db.delete(document)
     db.commit()

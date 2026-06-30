@@ -38,9 +38,11 @@ import { attendanceService } from '../services/api';
 
 const Attendance: React.FC = () => {
   const queryClient = useQueryClient();
-  const [startDate, setStartDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
   const [endDate, setEndDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
@@ -212,9 +214,24 @@ const Attendance: React.FC = () => {
   const getLocationIcon = (status: string) => {
     switch (status) {
       case 'office': return <LocationIcon fontSize="small" color="success" />;
+      case 'site': return <LocationIcon fontSize="small" color="primary" />;
       case 'wfh': return <MyLocationIcon fontSize="small" color="warning" />;
       default: return <LocationIcon fontSize="small" color="disabled" />;
     }
+  };
+
+  const getLocationLabel = (status?: string, name?: string) => {
+    if (status === 'office') return 'Office';
+    if (status === 'site') return name || 'Work Site';
+    if (status === 'wfh') return 'WFH';
+    return null;
+  };
+
+  const getLocationColor = (status?: string): 'success' | 'primary' | 'warning' | 'default' => {
+    if (status === 'office') return 'success';
+    if (status === 'site') return 'primary';
+    if (status === 'wfh') return 'warning';
+    return 'default';
   };
 
   const getTodayStatusText = () => {
@@ -336,12 +353,8 @@ const Attendance: React.FC = () => {
             <Box sx={{ mt: 1 }}>
               <Chip
                 icon={getLocationIcon(today?.location_status)}
-                label={today?.location_status === 'office' ? 'Office' : 
-                       today?.location_status === 'wfh' ? 'WFH' : 
-                       location ? 'Ready' : 'Not Set'}
-                color={today?.location_status === 'office' ? 'success' : 
-                       today?.location_status === 'wfh' ? 'warning' : 
-                       location ? 'info' : 'default'}
+                label={getLocationLabel(today?.location_status, today?.location_name) || (location ? 'Ready' : 'Not Set')}
+                color={today?.location_status ? getLocationColor(today.location_status) : (location ? 'info' : 'default')}
                 size="medium"
               />
             </Box>
@@ -460,11 +473,8 @@ const Attendance: React.FC = () => {
                     <TableCell>
                       <Chip
                         icon={getLocationIcon(record.location_status)}
-                        label={record.location_status === 'office' ? 'Office' : 
-                               record.location_status === 'wfh' ? 'WFH' : 
-                               'Unknown'}
-                        color={record.location_status === 'office' ? 'success' : 
-                               record.location_status === 'wfh' ? 'warning' : 'default'}
+                        label={getLocationLabel(record.location_status, record.location_name) || 'Unknown'}
+                        color={getLocationColor(record.location_status)}
                         size="small"
                         variant="outlined"
                       />

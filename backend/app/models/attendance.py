@@ -1,12 +1,37 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Float, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Float, Text, Index, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from ..core.database import Base
 
+class WorkLocation(Base):
+    __tablename__ = "work_locations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    address = Column(Text, nullable=True)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    radius = Column(Float, default=100)
+    is_active = Column(Boolean, default=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    tenant = relationship("Tenant", back_populates="work_locations")
+
+    def __repr__(self):
+        return f"<WorkLocation {self.name}>"
+
+
 class Attendance(Base):
     __tablename__ = "attendances"
-    
+    __table_args__ = (
+        UniqueConstraint("employee_id", "date", name="attendances_employee_id_date_key"),
+        Index("ix_attendances_tenant_date", "tenant_id", "date"),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     date = Column(Date, nullable=False)
@@ -17,22 +42,25 @@ class Attendance(Base):
     is_approved = Column(Boolean, default=False)
     notes = Column(Text, nullable=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
-    
+
     # Location tracking fields
     clock_in_latitude = Column(Float, nullable=True)
     clock_in_longitude = Column(Float, nullable=True)
     clock_out_latitude = Column(Float, nullable=True)
     clock_out_longitude = Column(Float, nullable=True)
     location_status = Column(String(20), default="unknown")
-    
+    work_location_id = Column(Integer, ForeignKey("work_locations.id"), nullable=True)
+    location_name = Column(String(100), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     # Relationships
     employee = relationship("Employee", back_populates="attendances")
     tenant = relationship("Tenant", back_populates="attendances")
     breaks = relationship("Break", back_populates="attendance", cascade="all, delete-orphan")
-    
+    work_location = relationship("WorkLocation")
+
     def __repr__(self):
         return f"<Attendance {self.employee_id} - {self.date}>"
 

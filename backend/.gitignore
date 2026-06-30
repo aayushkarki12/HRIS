@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Secrets
+.env
+.env.local
+
+# Uploaded user content
+uploads/

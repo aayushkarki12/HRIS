@@ -8,3 +8,4 @@ pydantic-settings
 python-jose[cryptography]
 bcrypt
 alembic
+slowapi

@@ -32,6 +32,7 @@ import {
   EventNote as LeaveIcon,
   AccessTime as AttendanceIcon,
   Schedule as TimesheetIcon,
+  AccountBalance as AccountingIcon,
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
@@ -50,14 +51,15 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
 
   const [openHR, setOpenHR] = useState(true);
   const [openProjects, setOpenProjects] = useState(true);
+  const [openAccounting, setOpenAccounting] = useState(true);
 
   const handleNavigation = (path: string) => {
     navigate(path);
     if (window.innerWidth < 600) onDrawerToggle();
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -185,6 +187,82 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
                 sx={{ borderRadius: 1 }}
               >
                 <ListItemText primary="Timesheets" />
+              </ListItemButton>
+            </ListItem>
+          </List>
+        </Collapse>
+
+        {/* Accounting */}
+        <ListItem disablePadding>
+          <ListItemButton onClick={() => setOpenAccounting(!openAccounting)} sx={{ borderRadius: 1 }}>
+            <ListItemIcon><AccountingIcon /></ListItemIcon>
+            <ListItemText primary="Accounting" />
+            {openAccounting ? <ExpandLess /> : <ExpandMore />}
+          </ListItemButton>
+        </ListItem>
+        <Collapse in={openAccounting} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/chart-of-accounts')}
+                selected={isSelected('/chart-of-accounts')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Chart of Accounts" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/journal-entries')}
+                selected={isSelected('/journal-entries')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Journal Entries" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/general-ledger')}
+                selected={isSelected('/general-ledger')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="General Ledger" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/payroll')}
+                selected={isSelected('/payroll')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Payroll" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/expense-claims')}
+                selected={isSelected('/expense-claims')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Expense Claims" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/invoices')}
+                selected={isSelected('/invoices')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Invoices" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ pl: 4 }}>
+              <ListItemButton
+                onClick={() => handleNavigation('/financial-reports')}
+                selected={isSelected('/financial-reports')}
+                sx={{ borderRadius: 1 }}
+              >
+                <ListItemText primary="Reports" />
               </ListItemButton>
             </ListItem>
           </List>

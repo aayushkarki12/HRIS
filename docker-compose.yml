@@ -5,9 +5,9 @@ services:
     image: postgres:15
     container_name: hris-db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: hris_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-hris_db}
     ports:
       - "5432:5432"
     volumes:
@@ -22,14 +22,11 @@ services:
       - "8000:8000"
     depends_on:
       - db
-    environment:
-      DATABASE_URL: postgresql://postgres:password@db:5432/hris_db
-      SECRET_KEY: your-super-secret-key-change-in-production
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+    env_file:
+      - ./backend/.env
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     networks:
       - hris-network
 
@@ -41,7 +38,7 @@ services:
     depends_on:
       - backend
     environment:
-      REACT_APP_API_URL: http://localhost:8000/api/v1
+      VITE_API_URL: http://localhost:8000/api/v1
     volumes:
       - ./frontend:/app
       - /app/node_modules
