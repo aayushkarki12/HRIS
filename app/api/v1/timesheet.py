@@ -1,9 +1,9 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import date, datetime, timedelta
-import traceback
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
@@ -13,6 +13,8 @@ from ...models.employee import Employee
 from ...models.project import Project
 from ...models.timesheet import Timesheet, TimesheetEntry
 from ...schemas.timesheet import TimesheetCreate, TimesheetResponse, TimesheetEntryCreate, TimesheetEntryResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/timesheets", tags=["timesheets"])
 
@@ -29,8 +31,7 @@ def get_my_timesheets(
             Timesheet.tenant_id == tenant.id
         ).order_by(Timesheet.week_start_date.desc()).all()
     except Exception as e:
-        print(f"Error in get_my_timesheets: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in get_my_timesheets: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/", response_model=TimesheetResponse, status_code=status.HTTP_201_CREATED)
@@ -42,7 +43,7 @@ def create_timesheet(
 ):
     """Create a new timesheet."""
     try:
-        print(f"Received timesheet data: {timesheet_data}")
+        logger.info(f"Received timesheet data: {timesheet_data}")
         
         if not timesheet_data.week_start_date:
             raise HTTPException(
@@ -82,8 +83,7 @@ def create_timesheet(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in create_timesheet: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in create_timesheet: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create timesheet: {str(e)}"
@@ -146,8 +146,7 @@ def add_timesheet_entry(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in add_timesheet_entry: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in add_timesheet_entry: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to add entry: {str(e)}"
@@ -203,8 +202,7 @@ def update_timesheet_entry(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in update_timesheet_entry: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in update_timesheet_entry: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update entry: {str(e)}"
@@ -256,8 +254,7 @@ def delete_timesheet_entry(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in delete_timesheet_entry: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in delete_timesheet_entry: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete entry: {str(e)}"
@@ -296,8 +293,7 @@ def submit_timesheet(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in submit_timesheet: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in submit_timesheet: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to submit timesheet: {str(e)}"
@@ -334,8 +330,7 @@ def approve_timesheet(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in approve_timesheet: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in approve_timesheet: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to approve timesheet: {str(e)}"

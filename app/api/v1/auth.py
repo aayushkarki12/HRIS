@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from datetime import timedelta, date
+from datetime import timedelta, date, datetime, timezone
 from typing import Optional
 
 from ...core.database import get_db
@@ -9,18 +10,44 @@ from ...core.security import (
     create_access_token,
     verify_password,
     get_password_hash,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    generate_refresh_token,
+    hash_refresh_token,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from ...core.dependencies import get_current_active_user, get_current_tenant
+from ...core.limiter import limiter
 from ...models.user import User
 from ...models.employee import Employee
 from ...models.tenant import Tenant
-from ...schemas.user import UserCreate, UserResponse, Token
+from ...models.refresh_token import RefreshToken
+from ...schemas.user import (
+    UserCreate, UserResponse, Token,
+    RefreshTokenRequest, AccessTokenResponse,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _issue_refresh_token(db: Session, user: User, tenant_id: int) -> str:
+    """Create and persist a new refresh token, returning the raw (unhashed) value."""
+    raw_token = generate_refresh_token()
+    db_token = RefreshToken(
+        user_id=user.id,
+        tenant_id=tenant_id,
+        token_hash=hash_refresh_token(raw_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        revoked=False,
+    )
+    db.add(db_token)
+    return raw_token
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 def register_user(
+    request: Request,
     user_data: UserCreate,
     db: Session = Depends(get_db)
 ):
@@ -39,7 +66,7 @@ def register_user(
         )
         db.add(tenant)
         db.flush()
-        print(f"✅ Created new tenant: {user_data.tenant_subdomain}")
+        logger.info(f"✅ Created new tenant: {user_data.tenant_subdomain}")
     
     # Check if user already exists
     existing_user = db.query(User).filter(
@@ -108,7 +135,9 @@ def test_tenant(
     }
 
 @router.post("/login", response_model=Token)
+@limiter.limit("10/minute")
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -149,10 +178,14 @@ def login(
         data={"sub": str(user.id), "role": user.role, "tenant_id": tenant.id},
         expires_delta=access_token_expires
     )
-    
+
+    refresh_token = _issue_refresh_token(db, user, tenant.id)
+    db.commit()
+
     # Return response with tenant as dict
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user": user,
         "tenant": {
@@ -164,6 +197,10 @@ def login(
             "address": tenant.address,
             "logo_url": tenant.logo_url,
             "is_active": tenant.is_active,
+            "office_latitude": tenant.office_latitude,
+            "office_longitude": tenant.office_longitude,
+            "office_radius": tenant.office_radius,
+            "office_address": tenant.office_address,
             "created_at": tenant.created_at,
             "updated_at": tenant.updated_at
         } if tenant else None
@@ -177,3 +214,67 @@ def get_current_user_info(
     Get current user information.
     """
     return current_user
+
+
+@router.post("/refresh", response_model=AccessTokenResponse)
+@limiter.limit("30/minute")
+def refresh_access_token(
+    request: Request,
+    data: RefreshTokenRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Exchange a valid refresh token for a new access token. Rotates the
+    refresh token on every use (old one revoked, new one issued) so a stolen
+    refresh token can only be replayed once before the legitimate client's
+    next refresh fails and the theft becomes visible.
+    """
+    token_hash = hash_refresh_token(data.refresh_token)
+    db_token = db.query(RefreshToken).filter(
+        RefreshToken.token_hash == token_hash
+    ).first()
+
+    if not db_token or db_token.revoked or db_token.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token"
+        )
+
+    user = db.query(User).filter(User.id == db_token.user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    # Rotate: revoke the used token, issue a new one
+    db_token.revoked = True
+    new_refresh_token = _issue_refresh_token(db, user, db_token.tenant_id)
+
+    access_token = create_access_token(
+        data={"sub": str(user.id), "role": user.role, "tenant_id": db_token.tenant_id},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    db.commit()
+
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+    }
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    data: RefreshTokenRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Revoke a refresh token, ending that session. The still-live access token
+    (if any) remains valid until its short expiry runs out - this is the
+    standard tradeoff of stateless JWTs and is why access tokens are kept short.
+    """
+    token_hash = hash_refresh_token(data.refresh_token)
+    db_token = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+    if db_token:
+        db_token.revoked = True
+        db.commit()
+    return None

@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
@@ -12,6 +13,8 @@ from ...models.resource import Resource
 from ...models.project import Project
 from ...models.assignment import Assignment
 from ...schemas.assignment import AssignmentCreate, AssignmentUpdate, AssignmentResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
@@ -267,7 +270,7 @@ def create_assignment(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error creating assignment: {e}")
+        logger.error(f"Error creating assignment: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create assignment: {str(e)}"

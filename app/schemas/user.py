@@ -1,7 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional
 from datetime import datetime, date
-import re
 
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -17,18 +16,20 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6, max_length=100)
+    password: str = Field(..., min_length=8, max_length=100)
     phone: Optional[str] = Field(None, min_length=10, max_length=20)
     department: str = Field("General", min_length=2, max_length=50)
     position: str = Field("Staff", min_length=2, max_length=50)
     join_date: Optional[date] = None
     role: Optional[str] = Field("user", pattern="^(admin|manager|user)$")
     tenant_subdomain: str = Field("default", min_length=2, max_length=50)
-    
+
     @validator('password')
     def password_strength(cls, v):
-        if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters long')
+        from ..core.security import validate_password_strength
+        error = validate_password_strength(v)
+        if error:
+            raise ValueError(error)
         return v
 
 
@@ -66,18 +67,33 @@ class TenantInfo(BaseModel):
     address: Optional[str] = None
     logo_url: Optional[str] = None
     is_active: bool
+    office_latitude: Optional[float] = None
+    office_longitude: Optional[float] = None
+    office_radius: Optional[float] = None
+    office_address: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
     user: UserResponse
     tenant: Optional[TenantInfo] = None
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class AccessTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
 
 
 class TokenData(BaseModel):

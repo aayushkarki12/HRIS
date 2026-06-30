@@ -1,9 +1,12 @@
+import logging
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 import pytz
 from ..core.database import SessionLocal
 from ..models.attendance import Attendance
 from ..models.employee import Employee
+
+logger = logging.getLogger(__name__)
 
 def mark_absent_employees():
     """
@@ -38,9 +41,9 @@ def mark_absent_employees():
                 attendance.status = "absent"
         
         db.commit()
-        print(f"✅ Marked absent employees for {today}")
+        logger.info(f"✅ Marked absent employees for {today}")
     except Exception as e:
-        print(f"❌ Error marking absent employees: {e}")
+        logger.info(f"❌ Error marking absent employees: {e}")
         db.rollback()
     finally:
         db.close()

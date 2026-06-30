@@ -1,8 +1,8 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
-import traceback
 from datetime import date
 
 from ...core.database import get_db
@@ -11,6 +11,8 @@ from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
 from ...schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -59,7 +61,7 @@ def update_my_profile(
         # Get only the fields that were sent
         update_data = employee_data.model_dump(exclude_unset=True)
         
-        print(f"Updating employee {employee.id} with data: {update_data}")
+        logger.info(f"Updating employee {employee.id} with data: {update_data}")
         
         # Allowed fields for self-service
         allowed_fields = [
@@ -85,11 +87,11 @@ def update_my_profile(
                             from datetime import datetime
                             value = datetime.strptime(value, '%Y-%m-%d').date()
                     except Exception as e:
-                        print(f"Error parsing date: {e}")
+                        logger.error(f"Error parsing date: {e}", exc_info=True)
                         # If date parsing fails, set to None
                         value = None
                 
-                print(f"Setting {key} = {value}")
+                logger.info(f"Setting {key} = {value}")
                 setattr(employee, key, value)
         
         db.commit()
@@ -100,8 +102,7 @@ def update_my_profile(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Error in update_my_profile: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in update_my_profile: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to update profile: {str(e)}")
 
 @router.get("/", response_model=List[EmployeeResponse])
@@ -130,8 +131,7 @@ def get_employees(
         employees = query.offset(skip).limit(limit).all()
         return employees
     except Exception as e:
-        print(f"Error in get_employees: {e}")
-        print(traceback.format_exc())
+        logger.error(f"Error in get_employees: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/stats", response_model=dict)
@@ -160,7 +160,7 @@ def get_employee_stats(
             "departments": [{"name": d.department, "count": d.count} for d in departments]
         }
     except Exception as e:
-        print(f"Error in get_employee_stats: {e}")
+        logger.error(f"Error in get_employee_stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
@@ -185,7 +185,7 @@ def create_employee(
         db.refresh(db_employee)
         return db_employee
     except Exception as e:
-        print(f"Error in create_employee: {e}")
+        logger.error(f"Error in create_employee: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -211,7 +211,7 @@ def get_employee(
             raise HTTPException(status_code=404, detail="Employee not found")
         return employee
     except Exception as e:
-        print(f"Error in get_employee: {e}")
+        logger.error(f"Error in get_employee: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)
@@ -239,7 +239,7 @@ def update_employee(
         db.refresh(employee)
         return employee
     except Exception as e:
-        print(f"Error in update_employee: {e}")
+        logger.error(f"Error in update_employee: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -264,6 +264,6 @@ def delete_employee(
         db.commit()
         return {"message": "Employee deactivated successfully"}
     except Exception as e:
-        print(f"Error in delete_employee: {e}")
+        logger.error(f"Error in delete_employee: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

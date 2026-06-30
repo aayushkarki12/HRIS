@@ -1,5 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from .core.config import settings
+from .core.limiter import limiter
+from .core.logging_config import setup_logging
+
+setup_logging()
+
 from .api import (
     auth_router,
     users_router,
@@ -10,8 +18,14 @@ from .api import (
     tenants_router,
     documents_router,
     leaves_router,
-    attendance_router,  # Make sure this is imported
+    attendance_router,
     timesheets_router,
+    accounting_router,
+    payroll_router,
+    expense_router,
+    invoice_router,
+    work_locations_router,
+    audit_logs_router,
 )
 
 app = FastAPI(
@@ -22,17 +36,15 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Configure CORS
+# Rate limiting - applied per-route via @limiter.limit() decorators (see auth.py)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Configure CORS - explicit origin allow-list only, no wildcard.
+# Set CORS_ORIGINS in .env to override (comma-separated) for staging/production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://localhost:8000",
-        "*",
-    ],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,6 +64,12 @@ app.include_router(documents_router, prefix="/api/v1")
 app.include_router(leaves_router, prefix="/api/v1")
 app.include_router(attendance_router, prefix="/api/v1")  # Make sure this line exists
 app.include_router(timesheets_router, prefix="/api/v1")
+app.include_router(accounting_router, prefix="/api/v1")
+app.include_router(payroll_router, prefix="/api/v1")
+app.include_router(expense_router, prefix="/api/v1")
+app.include_router(invoice_router, prefix="/api/v1")
+app.include_router(work_locations_router, prefix="/api/v1")
+app.include_router(audit_logs_router, prefix="/api/v1")
 
 @app.get("/")
 def root():
@@ -66,6 +84,7 @@ def root():
             "Attendance Tracking",
             "Timesheet Management",
             "Document Management",
+            "Accounting",
             "Multi-Tenant Support"
         ]
     }

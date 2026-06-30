@@ -10,6 +10,12 @@ from .v1 import (
     leaves_router,
     attendance_router,
     timesheets_router,
+    accounting_router,
+    payroll_router,
+    expense_router,
+    invoice_router,
+    work_locations_router,
+    audit_logs_router,
 )
 
 __all__ = [
@@ -24,4 +30,10 @@ __all__ = [
     "leaves_router",
     "attendance_router",
     "timesheets_router",
+    "accounting_router",
+    "payroll_router",
+    "expense_router",
+    "invoice_router",
+    "work_locations_router",
+    "audit_logs_router",
 ]

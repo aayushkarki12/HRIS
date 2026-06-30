@@ -137,24 +137,30 @@ def change_password(
         )
     
     # Verify old password
-    from ...core.security import verify_password
+    from ...core.security import verify_password, validate_password_strength
     if not verify_password(old_password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect current password"
         )
-    
-    if len(new_password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password must be at least 6 characters long"
-        )
-    
-    # Update password
+
+    password_error = validate_password_strength(new_password)
+    if password_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
+
+    # Update password and revoke all of this user's refresh tokens - a
+    # deliberate password change should end every other active session,
+    # otherwise a leaked/stolen session would survive the user's attempt
+    # to secure their account.
+    from ...models.refresh_token import RefreshToken
     user.hashed_password = get_password_hash(new_password)
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False
+    ).update({"revoked": True})
     db.commit()
-    
-    return {"message": "Password changed successfully"}
+
+    return {"message": "Password changed successfully. All other sessions have been logged out."}
 
 
 @router.delete("/{user_id}")

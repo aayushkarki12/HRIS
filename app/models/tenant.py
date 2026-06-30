@@ -35,9 +35,22 @@ class Tenant(Base):
     leave_types = relationship("LeaveType", back_populates="tenant", cascade="all, delete-orphan")
     leaves = relationship("Leave", back_populates="tenant", cascade="all, delete-orphan")
     attendances = relationship("Attendance", back_populates="tenant", cascade="all, delete-orphan")
+    work_locations = relationship("WorkLocation", back_populates="tenant", cascade="all, delete-orphan")
     breaks = relationship("Break", back_populates="tenant", cascade="all, delete-orphan")
     timesheets = relationship("Timesheet", back_populates="tenant", cascade="all, delete-orphan")
     timesheet_entries = relationship("TimesheetEntry", back_populates="tenant", cascade="all, delete-orphan")
+    accounts = relationship("Account", back_populates="tenant", cascade="all, delete-orphan")
+    journal_entries = relationship("JournalEntry", back_populates="tenant", cascade="all, delete-orphan")
+    journal_entry_lines = relationship("JournalEntryLine", back_populates="tenant", cascade="all, delete-orphan")
+    salary_structures = relationship("SalaryStructure", back_populates="tenant", cascade="all, delete-orphan")
+    payroll_runs = relationship("PayrollRun", back_populates="tenant", cascade="all, delete-orphan")
+    payslips = relationship("Payslip", back_populates="tenant", cascade="all, delete-orphan")
+    payslip_lines = relationship("PayslipLine", back_populates="tenant", cascade="all, delete-orphan")
+    expense_claims = relationship("ExpenseClaim", back_populates="tenant", cascade="all, delete-orphan")
+    expense_claim_lines = relationship("ExpenseClaimLine", back_populates="tenant", cascade="all, delete-orphan")
+    invoices = relationship("Invoice", back_populates="tenant", cascade="all, delete-orphan")
+    invoice_lines = relationship("InvoiceLine", back_populates="tenant", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="tenant", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Tenant {self.name}>"

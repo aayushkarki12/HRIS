@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
+from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
@@ -222,10 +223,13 @@ def approve_leave(
     if balance:
         balance.used_days += leave.total_days
         balance.remaining_days = balance.total_days - balance.used_days + balance.carried_over
-    
+
+    record_audit_log(db, tenant.id, current_user.id, "approve", "leave", leave.id,
+                      f"Approved leave for employee {leave.employee_id} ({leave.total_days} days)")
+
     db.commit()
     db.refresh(leave)
-    
+
     return leave
 
 @router.put("/{leave_id}/reject", response_model=LeaveResponse)
@@ -261,10 +265,12 @@ def reject_leave(
     leave.rejected_at = datetime.now()
     if reason:
         leave.reason = (leave.reason or "") + f"\n\nRejection reason: {reason}"
-    
+
+    record_audit_log(db, tenant.id, current_user.id, "reject", "leave", leave.id, reason)
+
     db.commit()
     db.refresh(leave)
-    
+
     return leave
 
 @router.put("/{leave_id}/cancel")
