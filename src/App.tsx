@@ -17,6 +17,13 @@ import Attendance from './pages/Attendance';
 import Timesheets from './pages/Timesheets';
 import TenantSettings from './pages/TenantSettings';
 import Profile from './pages/profile';
+import ChartOfAccounts from './pages/ChartOfAccounts';
+import JournalEntries from './pages/JournalEntries';
+import GeneralLedger from './pages/GeneralLedger';
+import Payroll from './pages/Payroll';
+import ExpenseClaims from './pages/ExpenseClaims';
+import Invoices from './pages/Invoices';
+import FinancialReports from './pages/FinancialReports';
 
 function App() {
   return (
@@ -36,6 +43,13 @@ function App() {
             <Route path="leaves" element={<Leaves />} />
             <Route path="attendance" element={<Attendance />} />
             <Route path="timesheets" element={<Timesheets />} />
+            <Route path="chart-of-accounts" element={<ChartOfAccounts />} />
+            <Route path="journal-entries" element={<JournalEntries />} />
+            <Route path="general-ledger" element={<GeneralLedger />} />
+            <Route path="payroll" element={<Payroll />} />
+            <Route path="expense-claims" element={<ExpenseClaims />} />
+            <Route path="invoices" element={<Invoices />} />
+            <Route path="financial-reports" element={<FinancialReports />} />
             <Route path="tenant-settings" element={<TenantSettings />} />
             <Route path="profile" element={<Profile />} />
           </Route>

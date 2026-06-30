@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Box,
@@ -14,17 +14,33 @@ import {
   CircularProgress,
   Alert,
   Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
 } from '@mui/material';
 import {
   Save as SaveIcon,
   Business as BusinessIcon,
   LocationOn as LocationIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Warehouse as WarehouseIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import { tenantService } from '../services/api';
+import { tenantService, workLocationService } from '../services/api';
 
 interface TenantSettingsFormData {
   name: string;
+  subdomain: string;
   email: string;
   phone: string;
   address: string;
@@ -69,6 +85,7 @@ const TenantSettings: React.FC = () => {
   const [success, setSuccess] = useState<string>('');
   const [formData, setFormData] = useState<TenantSettingsFormData>({
     name: '',
+    subdomain: '',
     email: '',
     phone: '',
     address: '',
@@ -83,6 +100,7 @@ const TenantSettings: React.FC = () => {
     if (tenant) {
       setFormData({
         name: tenant.name || '',
+        subdomain: (tenant as any).subdomain || '',
         email: tenant.email || '',
         phone: tenant.phone || '',
         address: tenant.address || '',
@@ -95,17 +113,18 @@ const TenantSettings: React.FC = () => {
     }
   }, [tenant]);
 
-  const updateTenantMutation = useMutation({
-    mutationFn: async (data: TenantSettingsFormData) => {
-      const cleanedData: any = {
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        address: data.address,
-        logo_url: data.logo_url,
-        office_address: data.office_address || '',
-      };
-      
+ const updateTenantMutation = useMutation({
+  mutationFn: async (data: TenantSettingsFormData) => {
+    const cleanedData: any = {
+      name: data.name,
+      subdomain: data.subdomain,
+      email: data.email,
+      phone: data.phone,
+      address: data.address,
+      logo_url: data.logo_url,
+      office_address: data.office_address || '',
+    };
+    
       // Office Latitude - convert to float or null
       if (data.office_latitude !== '' && data.office_latitude !== null && data.office_latitude !== undefined) {
         const parsed = parseFloat(data.office_latitude as string);
@@ -162,6 +181,127 @@ const TenantSettings: React.FC = () => {
     setError('');
     setSuccess('');
     updateTenantMutation.mutate(formData);
+  };
+
+  // ============ Work Locations ============
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<any>(null);
+  const [locationError, setLocationError] = useState('');
+  const [locationForm, setLocationForm] = useState({
+    name: '', address: '', latitude: '', longitude: '', radius: '100',
+  });
+
+  const { data: workLocations, isLoading: locationsLoading } = useQuery({
+    queryKey: ['workLocations'],
+    queryFn: workLocationService.getAll,
+    enabled: isAdmin,
+  });
+
+  const createLocationMutation = useMutation({
+    mutationFn: (data: any) => workLocationService.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workLocations'] });
+      toast.success('Work location created');
+      handleCloseLocationModal();
+    },
+    onError: (err: any) => {
+      const msg = getErrorMessage(err);
+      toast.error(msg);
+      setLocationError(msg);
+    },
+  });
+
+  const updateLocationMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => workLocationService.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workLocations'] });
+      toast.success('Work location updated');
+      handleCloseLocationModal();
+    },
+    onError: (err: any) => {
+      const msg = getErrorMessage(err);
+      toast.error(msg);
+      setLocationError(msg);
+    },
+  });
+
+  const deleteLocationMutation = useMutation({
+    mutationFn: (id: number) => workLocationService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workLocations'] });
+      toast.success('Work location deactivated');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err)),
+  });
+
+  const handleCloseLocationModal = () => {
+    setLocationModalOpen(false);
+    setEditingLocation(null);
+    setLocationForm({ name: '', address: '', latitude: '', longitude: '', radius: '100' });
+    setLocationError('');
+  };
+
+  const handleEditLocation = (loc: any) => {
+    setEditingLocation(loc);
+    setLocationForm({
+      name: loc.name,
+      address: loc.address || '',
+      latitude: String(loc.latitude),
+      longitude: String(loc.longitude),
+      radius: String(loc.radius),
+    });
+    setLocationModalOpen(true);
+  };
+
+  const handleUseMyLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocationForm((prev) => ({
+          ...prev,
+          latitude: position.coords.latitude.toFixed(6),
+          longitude: position.coords.longitude.toFixed(6),
+        }));
+        toast.success('Current location captured');
+      },
+      (err) => toast.error(err.message || 'Failed to get location'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSubmitLocation = () => {
+    setLocationError('');
+    const lat = parseFloat(locationForm.latitude);
+    const lng = parseFloat(locationForm.longitude);
+    const radius = parseFloat(locationForm.radius) || 100;
+
+    if (isNaN(lat) || isNaN(lng)) {
+      setLocationError('Latitude and longitude must be valid numbers');
+      return;
+    }
+
+    const payload = {
+      name: locationForm.name,
+      address: locationForm.address || null,
+      latitude: lat,
+      longitude: lng,
+      radius,
+    };
+
+    if (editingLocation) {
+      updateLocationMutation.mutate({ id: editingLocation.id, data: payload });
+    } else {
+      createLocationMutation.mutate(payload);
+    }
+  };
+
+  const handleDeleteLocation = (loc: any) => {
+    if (window.confirm(`Deactivate work location "${loc.name}"? Employees will no longer be able to clock in from there.`)) {
+      deleteLocationMutation.mutate(loc.id);
+    }
   };
 
   if (!isAdmin) {
@@ -241,6 +381,20 @@ const TenantSettings: React.FC = () => {
                       onChange={handleChange}
                       margin="normal"
                       size="small"
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Subdomain"
+                      name="subdomain"
+                      value={formData.subdomain}
+                      onChange={handleChange}
+                      margin="normal"
+                      size="small"
+                      required
+                      helperText="Subdomain for your organization's URL (e.g., company.hris-system.com)"
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -311,7 +465,6 @@ const TenantSettings: React.FC = () => {
                       size="small"
                       placeholder="e.g., 27.7172"
                       helperText="Latitude coordinate of your office (e.g., 27.7172)"
-                      inputProps={{ step: "0.000001" }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -326,7 +479,6 @@ const TenantSettings: React.FC = () => {
                       size="small"
                       placeholder="e.g., 85.3240"
                       helperText="Longitude coordinate of your office (e.g., 85.3240)"
-                      inputProps={{ step: "0.000001" }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -341,7 +493,6 @@ const TenantSettings: React.FC = () => {
                       size="small"
                       placeholder="100"
                       helperText="Distance in meters from office location (default: 100)"
-                      inputProps={{ min: "0", step: "10" }}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -457,7 +608,164 @@ const TenantSettings: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
+
+        <Grid item xs={12}>
+          <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+            <CardContent sx={{ p: 4 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  <WarehouseIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Work Locations
+                </Typography>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={() => setLocationModalOpen(true)}
+                >
+                  Add Location
+                </Button>
+              </Box>
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                Additional sites (warehouses, branch offices, client sites) where employees are allowed to clock in.
+                Each has its own radius — employees within range of any active location are marked present at that site instead of "Working from Home".
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+
+              {locationsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                  <CircularProgress size={28} />
+                </Box>
+              ) : (
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                        <TableCell><strong>Name</strong></TableCell>
+                        <TableCell><strong>Address</strong></TableCell>
+                        <TableCell><strong>Coordinates</strong></TableCell>
+                        <TableCell align="right"><strong>Radius</strong></TableCell>
+                        <TableCell><strong>Status</strong></TableCell>
+                        <TableCell align="right"><strong>Actions</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {(!workLocations || workLocations.length === 0) ? (
+                        <TableRow>
+                          <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                            <Typography color="textSecondary">No additional work locations configured</Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : workLocations.map((loc: any) => (
+                        <TableRow key={loc.id} hover>
+                          <TableCell sx={{ fontWeight: 600 }}>{loc.name}</TableCell>
+                          <TableCell>{loc.address || '-'}</TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                              {loc.latitude.toFixed(6)}, {loc.longitude.toFixed(6)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">{loc.radius}m</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={loc.is_active ? 'Active' : 'Inactive'}
+                              color={loc.is_active ? 'success' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" color="primary" onClick={() => handleEditLocation(loc)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            {loc.is_active && (
+                              <IconButton size="small" color="error" onClick={() => handleDeleteLocation(loc)}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
+
+      {/* Work Location Dialog */}
+      <Dialog open={locationModalOpen} onClose={handleCloseLocationModal} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingLocation ? 'Edit Work Location' : 'Add Work Location'}</DialogTitle>
+        <DialogContent>
+          {locationError && <Alert severity="error" sx={{ mb: 2 }}>{locationError}</Alert>}
+          <TextField
+            fullWidth
+            label="Location Name"
+            value={locationForm.name}
+            onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
+            margin="normal"
+            size="small"
+            placeholder="e.g. Hetauda Warehouse"
+          />
+          <TextField
+            fullWidth
+            label="Address"
+            value={locationForm.address}
+            onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
+            margin="normal"
+            size="small"
+            placeholder="Optional"
+          />
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <TextField
+              label="Latitude"
+              type="number"
+              value={locationForm.latitude}
+              onChange={(e) => setLocationForm({ ...locationForm, latitude: e.target.value })}
+              margin="normal"
+              size="small"
+              fullWidth
+              placeholder="e.g. 27.4287"
+            />
+            <TextField
+              label="Longitude"
+              type="number"
+              value={locationForm.longitude}
+              onChange={(e) => setLocationForm({ ...locationForm, longitude: e.target.value })}
+              margin="normal"
+              size="small"
+              fullWidth
+              placeholder="e.g. 85.0322"
+            />
+          </Box>
+          <Button size="small" startIcon={<LocationIcon />} onClick={handleUseMyLocation} sx={{ mt: 1 }}>
+            Use My Current Location
+          </Button>
+          <TextField
+            fullWidth
+            label="Radius (meters)"
+            type="number"
+            value={locationForm.radius}
+            onChange={(e) => setLocationForm({ ...locationForm, radius: e.target.value })}
+            margin="normal"
+            size="small"
+            helperText="How close an employee must be to clock in at this location"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseLocationModal}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitLocation}
+            disabled={!locationForm.name || !locationForm.latitude || !locationForm.longitude || createLocationMutation.isPending || updateLocationMutation.isPending}
+          >
+            {createLocationMutation.isPending || updateLocationMutation.isPending
+              ? 'Saving...'
+              : editingLocation ? 'Update Location' : 'Create Location'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -51,8 +51,8 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
     handleClose();
   };

@@ -22,6 +22,7 @@ interface RegisterData {
 }
 
 interface Tenant {
+  office_latitude: string;
   id: number;
   name: string;
   subdomain: string;
@@ -40,7 +41,7 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string, tenantId?: number) => Promise<LoginResult>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   switchTenant: (tenantId: number) => void;
   isAuthenticated: boolean;
   isAdmin: boolean;
@@ -95,6 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Store user
       setUser(response.user);
       localStorage.setItem('access_token', response.access_token);
+      localStorage.setItem('refresh_token', response.refresh_token);
       localStorage.setItem('user', JSON.stringify(response.user));
       
       // Store tenant
@@ -201,10 +203,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.location.reload();
   };
 
-  const logout = (): void => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('tenant');
+  const logout = async (): Promise<void> => {
+    // Revokes the refresh token server-side so it can't be used again, then
+    // clears local session state regardless of whether that call succeeds.
+    await authService.logout();
     setUser(null);
     setTenant(null);
     delete localStorage.__tenant;
