@@ -15,6 +15,7 @@ from .expense import router as expense_router
 from .invoice import router as invoice_router
 from .work_location import router as work_locations_router
 from .audit_log import router as audit_logs_router
+from .notification import router as notifications_router
 
 __all__ = [
     "auth_router",
@@ -34,4 +35,5 @@ __all__ = [
     "invoice_router",
     "work_locations_router",
     "audit_logs_router",
+    "notifications_router",
 ]
