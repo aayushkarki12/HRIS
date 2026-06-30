@@ -102,6 +102,11 @@ class AccessTokenResponse(BaseModel):
     token_type: str
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
 class TokenData(BaseModel):
     user_id: Optional[int] = None
     role: Optional[str] = None
