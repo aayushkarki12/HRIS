@@ -41,7 +41,7 @@ const PrivateRoute: React.FC = () => {
           backgroundColor: '#f5f7fa',
         }}
       >
-        <Box sx={{ maxWidth: 1200, margin: '0 auto' }}>
+        <Box sx={{ maxWidth: 1600, margin: '0 auto' }}>
           <Outlet />
         </Box>
       </Box>
