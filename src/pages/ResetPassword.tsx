@@ -16,7 +16,7 @@ import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-d
 import LockIcon from '@mui/icons-material/Lock';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
-import { authService } from '../services/api';
+import { authService, getErrorMessage } from '../services/api';
 
 const ResetPassword: React.FC = () => {
   const navigate = useNavigate();
@@ -49,7 +49,7 @@ const ResetPassword: React.FC = () => {
       setSuccess(true);
       setTimeout(() => navigate('/login'), 2500);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to reset password. The link may have expired.');
+      setError(getErrorMessage(err, 'Failed to reset password. The link may have expired.'));
     } finally {
       setLoading(false);
     }

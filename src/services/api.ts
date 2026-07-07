@@ -3,6 +3,21 @@ import { LoginCredentials, AuthResponse } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
+/**
+ * Extracts a human-readable string from an API error.
+ * FastAPI 422 responses return detail as an array of {type,loc,msg,input} objects;
+ * all other errors return detail as a plain string.
+ */
+export function getErrorMessage(error: any, fallback = 'An error occurred'): string {
+  const detail = error?.response?.data?.detail;
+  if (!detail) return error?.message || fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((d: any) => (typeof d === 'string' ? d : d?.msg ?? JSON.stringify(d))).join('; ');
+  }
+  return fallback;
+}
+
 const api: AxiosInstance = axios.create({
   baseURL: API_URL,
   headers: {
@@ -256,6 +271,15 @@ export const employeeService = {
     return response.data;
   },
 
+  uploadAvatar: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/employees/me/avatar', form, {
+      headers: { 'Content-Type': undefined },
+    });
+    return response.data;
+  },
+
   getStats: async () => {
     const response = await api.get('/employees/stats');
     return response.data;
@@ -318,6 +342,27 @@ export const resourceService = {
     const response = await api.delete(`/resources/${id}`);
     return response.data;
   },
+
+  // Resource requests (separate prefix to avoid route collision with /{resource_id})
+  createRequest: async (data: { resource_id: number; reason?: string }) => {
+    const response = await api.post('/resource-requests/', data);
+    return response.data;
+  },
+
+  getRequests: async (status?: string) => {
+    const response = await api.get('/resource-requests/', { params: status ? { status } : {} });
+    return response.data;
+  },
+
+  approveRequest: async (id: number, admin_notes?: string) => {
+    const response = await api.put(`/resource-requests/${id}/approve`, { admin_notes });
+    return response.data;
+  },
+
+  rejectRequest: async (id: number, admin_notes?: string) => {
+    const response = await api.put(`/resource-requests/${id}/reject`, { admin_notes });
+    return response.data;
+  },
 };
 
 // ============ PROJECT SERVICE ============
@@ -354,6 +399,24 @@ export const projectService = {
 
   delete: async (id: number) => {
     const response = await api.delete(`/projects/${id}`);
+    return response.data;
+  },
+
+  getMembers: async (projectId: number) => {
+    const response = await api.get(`/projects/${projectId}/members`);
+    return response.data;
+  },
+
+  addMember: async (projectId: number, employeeId: number, role?: string) => {
+    const response = await api.post(`/projects/${projectId}/members`, {
+      employee_id: employeeId,
+      role: role || undefined,
+    });
+    return response.data;
+  },
+
+  removeMember: async (projectId: number, employeeId: number) => {
+    const response = await api.delete(`/projects/${projectId}/members/${employeeId}`);
     return response.data;
   },
 };
@@ -403,18 +466,19 @@ export const documentService = {
     return response.data;
   },
 
-  upload: async (file: File, documentType: string, description?: string) => {
+  upload: async (file: File, documentType: string, documentName: string, description?: string) => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const response = await api.post('/documents/upload', formData, {
       params: {
         document_type: documentType,
-        description: description || '',
+        document_name: documentName,
+        ...(description ? { description } : {}),
       },
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      // Unset the instance-level 'application/json' default so the browser can
+      // set Content-Type to multipart/form-data with the correct boundary.
+      headers: { 'Content-Type': undefined },
     });
     return response.data;
   },
@@ -528,6 +592,11 @@ export const attendanceService = {
 
   getStats: async () => {
     const response = await api.get('/attendance/stats');
+    return response.data;
+  },
+
+  getTodayOverview: async () => {
+    const response = await api.get('/attendance/today-overview');
     return response.data;
   },
 };
@@ -700,6 +769,115 @@ export const accountingService = {
     const response = await api.get('/accounting/reports/cash-flow', { params });
     return response.data;
   },
+
+  getRatioAnalysis: async (params?: { end_date?: string }) => {
+    const response = await api.get('/accounting/reports/ratio-analysis', { params });
+    return response.data;
+  },
+
+  getTaxSummary: async (params?: { start_date?: string; end_date?: string }) => {
+    const response = await api.get('/accounting/reports/tax-summary', { params });
+    return response.data;
+  },
+
+  getReceivablesAging: async () => {
+    const response = await api.get('/accounting/reports/receivables');
+    return response.data;
+  },
+
+  getPayablesAging: async () => {
+    const response = await api.get('/accounting/reports/payables');
+    return response.data;
+  },
+
+  // Cost Centers
+  getCostCenters: async (params?: { is_active?: boolean }) => {
+    const response = await api.get('/accounting/cost-centers', { params });
+    return response.data;
+  },
+
+  createCostCenter: async (data: any) => {
+    const response = await api.post('/accounting/cost-centers', data);
+    return response.data;
+  },
+
+  updateCostCenter: async (id: number, data: any) => {
+    const response = await api.put(`/accounting/cost-centers/${id}`, data);
+    return response.data;
+  },
+
+  deactivateCostCenter: async (id: number) => {
+    const response = await api.delete(`/accounting/cost-centers/${id}`);
+    return response.data;
+  },
+
+  getCostCenterSpend: async (id: number, params?: { start_date?: string; end_date?: string }) => {
+    const response = await api.get(`/accounting/cost-centers/${id}/spend`, { params });
+    return response.data;
+  },
+
+  // Ledger Groups
+  getLedgerGroupTree: async (params?: { start_date?: string; end_date?: string }) => {
+    const response = await api.get('/accounting/ledger-groups/tree', { params });
+    return response.data;
+  },
+
+  getLedgerGroups: async (params?: { is_active?: boolean; search?: string }) => {
+    const response = await api.get('/accounting/ledger-groups', { params });
+    return response.data;
+  },
+
+  createLedgerGroup: async (data: any) => {
+    const response = await api.post('/accounting/ledger-groups', data);
+    return response.data;
+  },
+
+  updateLedgerGroup: async (id: number, data: any) => {
+    const response = await api.put(`/accounting/ledger-groups/${id}`, data);
+    return response.data;
+  },
+
+  deleteLedgerGroup: async (id: number) => {
+    const response = await api.delete(`/accounting/ledger-groups/${id}`);
+    return response.data;
+  },
+
+  // Tax Rates
+  getTaxRates: async (params?: { is_active?: boolean }) => {
+    const response = await api.get('/accounting/tax-rates', { params });
+    return response.data;
+  },
+
+  createTaxRate: async (data: any) => {
+    const response = await api.post('/accounting/tax-rates', data);
+    return response.data;
+  },
+
+  updateTaxRate: async (id: number, data: any) => {
+    const response = await api.put(`/accounting/tax-rates/${id}`, data);
+    return response.data;
+  },
+
+  deactivateTaxRate: async (id: number) => {
+    const response = await api.delete(`/accounting/tax-rates/${id}`);
+    return response.data;
+  },
+
+  // Bank Reconciliation
+  getReconciliationStatus: async (accountId: number) => {
+    const response = await api.get(`/accounting/reconciliation/${accountId}`);
+    return response.data;
+  },
+
+  reconcileAccount: async (accountId: number, data: { line_ids: number[]; statement_date: string; statement_balance: number; notes?: string }) => {
+    const response = await api.post(`/accounting/reconciliation/${accountId}`, data);
+    return response.data;
+  },
+
+  getReconciliationHistory: async (accountId: number) => {
+    const response = await api.get(`/accounting/reconciliation/${accountId}/history`);
+    return response.data;
+  },
 };
 
 // ============ PAYROLL SERVICE ============
@@ -853,6 +1031,84 @@ export const invoiceService = {
   },
 };
 
+// ============ AUDIT LOG SERVICE ============
+export const auditLogService = {
+  getRecent: async (limit = 10) => {
+    const response = await api.get('/audit-logs/', { params: { limit } });
+    return response.data;
+  },
+  getByEntity: async (entity_type: string, entity_id: number, limit = 50) => {
+    const response = await api.get('/audit-logs/', { params: { entity_type, entity_id, limit } });
+    return response.data;
+  },
+  getAll: async (params?: {
+    skip?: number; limit?: number; entity_type?: string; entity_id?: number;
+    user_id?: number; action?: string; module?: string; start_date?: string; end_date?: string;
+  }) => {
+    const response = await api.get('/audit-logs/', { params });
+    return response.data;
+  },
+  getMeta: async () => {
+    const response = await api.get('/audit-logs/meta');
+    return response.data;
+  },
+  exportCsv: async (params?: {
+    entity_type?: string; entity_id?: number; user_id?: number; action?: string;
+    module?: string; start_date?: string; end_date?: string;
+  }) => {
+    const response = await api.get('/audit-logs/export', { params, responseType: 'blob' });
+    return response.data;
+  },
+};
+
+// ============ VOUCHER SERVICE ============
+export const voucherService = {
+  getAll: async (params?: { voucher_type?: string; status?: string; skip?: number; limit?: number }) => {
+    const response = await api.get('/vouchers/', { params });
+    return response.data;
+  },
+
+  getById: async (id: number) => {
+    const response = await api.get(`/vouchers/${id}`);
+    return response.data;
+  },
+
+  create: async (data: any) => {
+    const response = await api.post('/vouchers/', data);
+    return response.data;
+  },
+
+  submit: async (id: number) => {
+    const response = await api.put(`/vouchers/${id}/submit`);
+    return response.data;
+  },
+
+  approve: async (id: number) => {
+    const response = await api.put(`/vouchers/${id}/approve`);
+    return response.data;
+  },
+
+  reject: async (id: number, remarks?: string) => {
+    const response = await api.put(`/vouchers/${id}/reject`, { remarks });
+    return response.data;
+  },
+
+  cancel: async (id: number, remarks?: string) => {
+    const response = await api.put(`/vouchers/${id}/cancel`, { remarks });
+    return response.data;
+  },
+
+  post: async (id: number) => {
+    const response = await api.put(`/vouchers/${id}/post`);
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    const response = await api.delete(`/vouchers/${id}`);
+    return response.data;
+  },
+};
+
 // ============ TENANT SERVICE ============
 export const tenantService = {
   getMyTenant: async () => {
@@ -876,6 +1132,170 @@ export const tenantService = {
 
   getStats: async () => {
     const response = await api.get('/tenants/me/stats');
+    return response.data;
+  },
+};
+
+// ============ INVENTORY SERVICE ============
+export const inventoryService = {
+  // Warehouses
+  getWarehouses: async (params?: { is_active?: boolean }) => {
+    const response = await api.get('/inventory/warehouses', { params });
+    return response.data;
+  },
+  createWarehouse: async (data: any) => {
+    const response = await api.post('/inventory/warehouses', data);
+    return response.data;
+  },
+  updateWarehouse: async (id: number, data: any) => {
+    const response = await api.put(`/inventory/warehouses/${id}`, data);
+    return response.data;
+  },
+  deactivateWarehouse: async (id: number) => {
+    const response = await api.delete(`/inventory/warehouses/${id}`);
+    return response.data;
+  },
+
+  // Categories
+  getCategories: async (params?: { is_active?: boolean }) => {
+    const response = await api.get('/inventory/categories', { params });
+    return response.data;
+  },
+  createCategory: async (data: any) => {
+    const response = await api.post('/inventory/categories', data);
+    return response.data;
+  },
+  updateCategory: async (id: number, data: any) => {
+    const response = await api.put(`/inventory/categories/${id}`, data);
+    return response.data;
+  },
+  deactivateCategory: async (id: number) => {
+    const response = await api.delete(`/inventory/categories/${id}`);
+    return response.data;
+  },
+
+  // Units of Measure
+  getUnits: async (params?: { is_active?: boolean }) => {
+    const response = await api.get('/inventory/units', { params });
+    return response.data;
+  },
+  createUnit: async (data: any) => {
+    const response = await api.post('/inventory/units', data);
+    return response.data;
+  },
+  updateUnit: async (id: number, data: any) => {
+    const response = await api.put(`/inventory/units/${id}`, data);
+    return response.data;
+  },
+  deactivateUnit: async (id: number) => {
+    const response = await api.delete(`/inventory/units/${id}`);
+    return response.data;
+  },
+
+  // Suppliers
+  getSuppliers: async (params?: { is_active?: boolean; search?: string }) => {
+    const response = await api.get('/inventory/suppliers', { params });
+    return response.data;
+  },
+  createSupplier: async (data: any) => {
+    const response = await api.post('/inventory/suppliers', data);
+    return response.data;
+  },
+  updateSupplier: async (id: number, data: any) => {
+    const response = await api.put(`/inventory/suppliers/${id}`, data);
+    return response.data;
+  },
+  deactivateSupplier: async (id: number) => {
+    const response = await api.delete(`/inventory/suppliers/${id}`);
+    return response.data;
+  },
+
+  // Items
+  getItems: async (params?: { is_active?: boolean; category_id?: number; search?: string; low_stock_only?: boolean }) => {
+    const response = await api.get('/inventory/items', { params });
+    return response.data;
+  },
+  getItem: async (id: number) => {
+    const response = await api.get(`/inventory/items/${id}`);
+    return response.data;
+  },
+  createItem: async (data: any) => {
+    const response = await api.post('/inventory/items', data);
+    return response.data;
+  },
+  updateItem: async (id: number, data: any) => {
+    const response = await api.put(`/inventory/items/${id}`, data);
+    return response.data;
+  },
+  deactivateItem: async (id: number) => {
+    const response = await api.delete(`/inventory/items/${id}`);
+    return response.data;
+  },
+
+  // Stock movements
+  getMovements: async (params?: { item_id?: number; warehouse_id?: number; skip?: number; limit?: number }) => {
+    const response = await api.get('/inventory/movements', { params });
+    return response.data;
+  },
+  stockIn: async (data: any, contra_account_id?: number) => {
+    const response = await api.post('/inventory/movements/stock-in', data, { params: { contra_account_id } });
+    return response.data;
+  },
+  stockOut: async (data: any, contra_account_id?: number) => {
+    const response = await api.post('/inventory/movements/stock-out', data, { params: { contra_account_id } });
+    return response.data;
+  },
+  transfer: async (data: any) => {
+    const response = await api.post('/inventory/movements/transfer', data);
+    return response.data;
+  },
+
+  // Dashboard
+  getDashboard: async () => {
+    const response = await api.get('/inventory/dashboard');
+    return response.data;
+  },
+};
+
+export const budgetService = {
+  getBudgets: async (params?: { fiscal_year?: number; scope_type?: string; status?: string }) => {
+    const response = await api.get('/budgets/', { params });
+    return response.data;
+  },
+  getBudget: async (id: number) => {
+    const response = await api.get(`/budgets/${id}`);
+    return response.data;
+  },
+  createBudget: async (data: any) => {
+    const response = await api.post('/budgets/', data);
+    return response.data;
+  },
+  updateBudget: async (id: number, data: any) => {
+    const response = await api.put(`/budgets/${id}`, data);
+    return response.data;
+  },
+  deleteBudget: async (id: number) => {
+    const response = await api.delete(`/budgets/${id}`);
+    return response.data;
+  },
+  submitBudget: async (id: number) => {
+    const response = await api.put(`/budgets/${id}/submit`);
+    return response.data;
+  },
+  approveBudget: async (id: number) => {
+    const response = await api.put(`/budgets/${id}/approve`);
+    return response.data;
+  },
+  rejectBudget: async (id: number, remarks?: string) => {
+    const response = await api.put(`/budgets/${id}/reject`, { remarks });
+    return response.data;
+  },
+  getVariance: async (id: number) => {
+    const response = await api.get(`/budgets/${id}/variance`);
+    return response.data;
+  },
+  getDashboard: async (fiscal_year?: number) => {
+    const response = await api.get('/budgets/reports/dashboard', { params: { fiscal_year } });
     return response.data;
   },
 };

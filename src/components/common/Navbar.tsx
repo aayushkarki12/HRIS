@@ -2,11 +2,11 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { useCommandPalette } from './CommandPalette';
 import { notificationService } from '../../services/api';
 import {
   AppBar,
   Toolbar,
-  Typography,
   IconButton,
   Box,
   Avatar,
@@ -14,8 +14,8 @@ import {
   MenuItem,
   Tooltip,
   Badge,
-  Chip,
   Divider,
+  Typography,
   List,
   ListItemButton,
   ListItemText,
@@ -26,32 +26,31 @@ import {
   Menu as MenuIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
-  Dashboard as DashboardIcon,
   Notifications as NotificationsIcon,
   Settings as SettingsIcon,
-  Business as BusinessIcon,
+  NotificationsNone as NotificationsNoneIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 
-const drawerWidth = 240;
+export const DRAWER_WIDTH = 256;
 
 interface NavbarProps {
   onMenuToggle: () => void;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
-  <MenuItem onClick={() => { navigate('/profile'); handleClose(); }}>
-  <PersonIcon sx={{ mr: 1, fontSize: 20 }} /> Profile
-  </MenuItem>
-  const { user, tenant, logout } = useAuth();
+  const { user, tenant, logout, isAdmin } = useAuth();
+  const { setOpen: openPalette } = useCommandPalette();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const [notifAnchorEl, setNotifAnchorEl] = React.useState<null | HTMLElement>(null);
 
+  // ── Notifications ──────────────────────────────────────────────────────────
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ['notifications-unread-count'],
     queryFn: notificationService.getUnreadCount,
-    refetchInterval: 30000,
+    refetchInterval: 30_000,
   });
 
   const { data: notifications, isLoading: notificationsLoading } = useQuery({
@@ -76,12 +75,10 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
     },
   });
 
-  const handleNotifOpen = (event: React.MouseEvent<HTMLElement>) => setNotifAnchorEl(event.currentTarget);
-  const handleNotifClose = () => setNotifAnchorEl(null);
-
+  // ── Helpers ────────────────────────────────────────────────────────────────
   const timeAgo = (dateStr: string) => {
     const diffMs = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diffMs / 60000);
+    const mins = Math.floor(diffMs / 60_000);
     if (mins < 1) return 'just now';
     if (mins < 60) return `${mins}m ago`;
     const hours = Math.floor(mins / 60);
@@ -89,201 +86,288 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
-  const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
+  const { data: myProfile } = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: () => import('../../services/api').then(m => m.employeeService.getMyProfile()),
+    enabled: !!user?.id,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
 
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
+  const userInitials = `${user?.first_name?.[0] ?? ''}${user?.last_name?.[0] ?? ''}`.toUpperCase();
+  const avatarSrc = myProfile?.profile_picture ? `http://localhost:8000${myProfile.profile_picture}` : undefined;
+  const tenantName = tenant?.name ?? 'HRIS System';
 
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleLogout = async () => {
+    setAnchorEl(null);
+    queryClient.clear();
     await logout();
     navigate('/login');
-    handleClose();
   };
-
-  // Get tenant display name
-  const getTenantDisplay = () => {
-    if (tenant?.name) {
-      return tenant.name;
-    }
-    // Fallback: try to get from localStorage
-    const storedTenant = localStorage.getItem('tenant');
-    if (storedTenant) {
-      try {
-        const parsed = JSON.parse(storedTenant);
-        return parsed.name || 'HRIS System';
-      } catch (e) {
-        return 'HRIS System';
-      }
-    }
-    return 'HRIS System';
-  };
-
-  const getTenantSubdomain = () => {
-    if (tenant?.subdomain) {
-      return tenant.subdomain;
-    }
-    const storedTenant = localStorage.getItem('tenant');
-    if (storedTenant) {
-      try {
-        const parsed = JSON.parse(storedTenant);
-        return parsed.subdomain;
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  };
-
-  const tenantName = getTenantDisplay();
-  const tenantSubdomain = getTenantSubdomain();
 
   return (
     <AppBar
       position="fixed"
       sx={{
-        width: { sm: `calc(100% - ${drawerWidth}px)` },
-        ml: { sm: `${drawerWidth}px` },
-        backgroundColor: 'white',
-        color: 'text.primary',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-        zIndex: (theme) => theme.zIndex.drawer + 1,
+        width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
+        ml: { sm: `${DRAWER_WIDTH}px` },
+        zIndex: (t) => t.zIndex.drawer + 1,
       }}
     >
-      <Toolbar>
+      <Toolbar sx={{ minHeight: { xs: 56, sm: 60 }, px: { xs: 2, sm: 3 }, gap: 1 }}>
+        {/* Mobile hamburger */}
         <IconButton
-          color="inherit"
-          aria-label="open drawer"
+          aria-label="open navigation"
           edge="start"
           onClick={onMenuToggle}
-          sx={{ mr: 2, display: { sm: 'none' } }}
+          sx={{ display: { sm: 'none' }, mr: 0.5 }}
         >
-          <MenuIcon />
+          <MenuIcon sx={{ fontSize: 22 }} />
         </IconButton>
 
-        {/* Tenant Branding */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {tenant?.logo_url ? (
-            <img 
-              src={tenant.logo_url} 
-              alt={tenant.name} 
-              style={{ height: 32, width: 'auto' }} 
-            />
-          ) : (
-            <BusinessIcon sx={{ color: 'primary.main', fontSize: 28 }} />
-          )}
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            sx={{
-              fontWeight: 600,
-              color: 'primary.main',
-              fontSize: '1.1rem',
-            }}
-          >
-            {tenantName}
-          </Typography>
-        </Box>
+        {/* Page title / tenant name shown on desktop */}
+        <Typography
+          variant="subtitle2"
+          noWrap
+          sx={{
+            display: { xs: 'none', md: 'block' },
+            color: 'text.secondary',
+            fontWeight: 400,
+            fontSize: '0.8125rem',
+          }}
+        >
+          {tenantName}
+        </Typography>
 
-        {/* Tenant Subdomain Badge */}
-        {tenantSubdomain && (
-          <Chip
-            label={tenantSubdomain}
-            size="small"
-            variant="outlined"
-            sx={{ ml: 2, fontSize: '0.7rem', color: 'text.secondary' }}
-          />
-        )}
+        {/* ⌘K Search trigger */}
+        <Box
+          onClick={() => openPalette(true)}
+          sx={{
+            display: { xs: 'none', sm: 'flex' },
+            alignItems: 'center',
+            gap: 1,
+            px: 1.5,
+            py: 0.75,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            bgcolor: '#F8FAFC',
+            transition: 'all 150ms ease',
+            '&:hover': { borderColor: 'primary.main', bgcolor: '#EEF2FF' },
+            minWidth: 200,
+          }}
+        >
+          <SearchIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
+          <Typography variant="body2" color="text.disabled" sx={{ flex: 1, fontSize: '0.8125rem' }}>
+            Search…
+          </Typography>
+          <Box sx={{
+            display: 'flex', gap: 0.5, alignItems: 'center',
+          }}>
+            {['Ctrl', 'K'].map(k => (
+              <Box key={k} sx={{
+                fontSize: '0.6rem', fontWeight: 700, color: 'text.disabled',
+                border: '1px solid', borderColor: 'divider', borderRadius: '4px',
+                px: 0.6, py: 0.1, lineHeight: 1.6, letterSpacing: '0.02em',
+              }}>{k}</Box>
+            ))}
+          </Box>
+        </Box>
 
         <Box sx={{ flexGrow: 1 }} />
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Tooltip title="Dashboard">
-            <IconButton color="inherit" onClick={() => navigate('/dashboard')} size="small">
-              <DashboardIcon />
-            </IconButton>
-          </Tooltip>
-
+        {/* Right side actions */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {/* Notification bell */}
           <Tooltip title="Notifications">
-            <IconButton color="inherit" size="small" onClick={handleNotifOpen}>
-              <Badge badgeContent={unreadCount} color="error" max={99}>
-                <NotificationsIcon />
+            <IconButton
+              aria-label={`${unreadCount} unread notifications`}
+              onClick={(e) => setNotifAnchorEl(e.currentTarget)}
+              size="small"
+              sx={{ position: 'relative' }}
+            >
+              <Badge
+                badgeContent={unreadCount}
+                color="error"
+                max={99}
+                sx={{ '& .MuiBadge-badge': { top: 2, right: 2 } }}
+              >
+                {unreadCount > 0 ? (
+                  <NotificationsIcon sx={{ fontSize: 20 }} />
+                ) : (
+                  <NotificationsNoneIcon sx={{ fontSize: 20 }} />
+                )}
               </Badge>
             </IconButton>
           </Tooltip>
 
+          {/* Notification panel */}
           <Menu
             anchorEl={notifAnchorEl}
             open={Boolean(notifAnchorEl)}
-            onClose={handleNotifClose}
+            onClose={() => setNotifAnchorEl(null)}
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-            slotProps={{ paper: { sx: { width: 380, maxHeight: 480 } } }}
+            slotProps={{
+              paper: {
+                sx: {
+                  width: 360,
+                  maxHeight: 480,
+                  mt: 0.5,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                },
+              },
+            }}
           >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Notifications</Typography>
-              {!!unreadCount && (
-                <Button size="small" sx={{ textTransform: 'none' }} onClick={() => markAllReadMutation.mutate()}>
+            {/* Panel header */}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                px: 2,
+                py: 1.5,
+                flexShrink: 0,
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                Notifications
+                {unreadCount > 0 && (
+                  <Box
+                    component="span"
+                    sx={{
+                      ml: 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      backgroundColor: 'error.main',
+                      color: '#fff',
+                      fontSize: '0.625rem',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {unreadCount}
+                  </Box>
+                )}
+              </Typography>
+              {unreadCount > 0 && (
+                <Button
+                  size="small"
+                  onClick={() => markAllReadMutation.mutate()}
+                  disabled={markAllReadMutation.isPending}
+                  sx={{ fontSize: '0.75rem', py: 0.5 }}
+                >
                   Mark all read
                 </Button>
               )}
             </Box>
+
             <Divider />
-            {notificationsLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : !notifications || notifications.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">No notifications yet</Typography>
-              </Box>
-            ) : (
-              <List sx={{ p: 0 }}>
-                {notifications.map((n: any) => (
-                  <ListItemButton
-                    key={n.id}
-                    onClick={() => { if (!n.is_read) markReadMutation.mutate(n.id); }}
-                    sx={{
-                      alignItems: 'flex-start',
-                      borderLeft: n.is_read ? 'none' : '3px solid',
-                      borderLeftColor: 'primary.main',
-                      backgroundColor: n.is_read ? 'transparent' : 'action.hover',
-                    }}
-                  >
-                    <ListItemText
-                      primary={
-                        <Typography variant="body2" sx={{ fontWeight: n.is_read ? 400 : 600 }}>
-                          {n.title}
-                        </Typography>
-                      }
-                      secondary={
-                        <>
-                          <Typography variant="caption" color="text.secondary" component="span" sx={{ display: 'block' }}>
-                            {n.message}
+
+            {/* Panel body */}
+            <Box sx={{ overflowY: 'auto', flexGrow: 1 }}>
+              {notificationsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress size={20} />
+                </Box>
+              ) : !notifications || notifications.length === 0 ? (
+                <Box sx={{ py: 5, textAlign: 'center' }}>
+                  <NotificationsNoneIcon sx={{ fontSize: 32, color: 'text.disabled', mb: 1 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    No notifications yet
+                  </Typography>
+                </Box>
+              ) : (
+                <List disablePadding>
+                  {notifications.map((n: any) => (
+                    <ListItemButton
+                      key={n.id}
+                      onClick={() => {
+                        if (!n.is_read) markReadMutation.mutate(n.id);
+                        setNotifAnchorEl(null);
+                      }}
+                      sx={{
+                        alignItems: 'flex-start',
+                        px: 2,
+                        py: 1.5,
+                        borderRadius: 0,
+                        borderLeft: '3px solid',
+                        borderLeftColor: n.is_read ? 'transparent' : 'primary.main',
+                        backgroundColor: n.is_read ? 'transparent' : '#F8F9FF',
+                        '&:hover': { backgroundColor: n.is_read ? 'action.hover' : '#F0F2FF' },
+                      }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Typography
+                            variant="body2"
+                            sx={{ fontWeight: n.is_read ? 400 : 600, color: 'text.primary', mb: 0.25 }}
+                          >
+                            {n.title}
                           </Typography>
-                          <Typography variant="caption" color="text.disabled" component="span">
-                            {timeAgo(n.created_at)}
-                          </Typography>
-                        </>
-                      }
-                    />
-                  </ListItemButton>
-                ))}
-              </List>
-            )}
+                        }
+                        secondary={
+                          <Box component="span">
+                            {n.message && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                sx={{ display: 'block', color: 'text.secondary', mb: 0.5 }}
+                              >
+                                {n.message}
+                              </Typography>
+                            )}
+                            <Typography component="span" variant="caption" sx={{ color: 'text.disabled' }}>
+                              {timeAgo(n.created_at)}
+                            </Typography>
+                          </Box>
+                        }
+                        disableTypography
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+              )}
+            </Box>
           </Menu>
 
-          <Typography variant="body2" sx={{ display: { xs: 'none', md: 'block' }, color: 'text.secondary', mx: 1 }}>
-            {user?.first_name} {user?.last_name}
-          </Typography>
+          {/* Divider */}
+          <Box
+            sx={{
+              width: 1,
+              height: 24,
+              bgcolor: 'divider',
+              mx: 0.5,
+              display: { xs: 'none', sm: 'block' },
+            }}
+          />
 
-          <Tooltip title="Account settings">
-            <IconButton onClick={handleMenu} size="small">
-              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: '14px' }}>
-                {user?.first_name?.[0]}{user?.last_name?.[0]}
+          {/* User avatar menu */}
+          <Tooltip title="Account">
+            <IconButton
+              onClick={(e) => setAnchorEl(e.currentTarget)}
+              size="small"
+              aria-label="account menu"
+              sx={{ p: 0.5 }}
+            >
+              <Avatar
+                src={avatarSrc}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  bgcolor: 'primary.main',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                }}
+              >
+                {!avatarSrc && userInitials}
               </Avatar>
             </IconButton>
           </Tooltip>
@@ -291,41 +375,46 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
           <Menu
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
-            onClose={handleClose}
+            onClose={() => setAnchorEl(null)}
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            slotProps={{ paper: { sx: { width: 220, mt: 0.5 } } }}
           >
-            <MenuItem disabled>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Avatar sx={{ width: 24, height: 24, bgcolor: 'primary.main', fontSize: '12px' }}>
-                  {user?.first_name?.[0]}{user?.last_name?.[0]}
-                </Avatar>
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                    {user?.first_name} {user?.last_name}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {user?.email}
-                  </Typography>
-                  <Typography variant="caption" color="primary" sx={{ display: 'block' }}>
-                    {tenantName}
-                  </Typography>
-                </Box>
-              </Box>
+            {/* User info header */}
+            <Box sx={{ px: 1.5, py: 1.25 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.primary' }} noWrap>
+                {user?.first_name} {user?.last_name}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                {user?.email}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 500, display: 'block', mt: 0.25 }}>
+                {tenantName}
+              </Typography>
+            </Box>
+
+            <Divider sx={{ my: 0.5 }} />
+
+            <MenuItem onClick={() => { navigate('/profile'); setAnchorEl(null); }}>
+              <PersonIcon sx={{ mr: 1.5, fontSize: 18, color: 'text.secondary' }} />
+              Profile
             </MenuItem>
-            <Divider />
-            <MenuItem onClick={() => { navigate('/dashboard'); handleClose(); }}>
-              <DashboardIcon sx={{ mr: 1, fontSize: 20 }} /> Dashboard
-            </MenuItem>
-            <MenuItem onClick={() => { navigate('/tenant-settings'); handleClose(); }}>
-              <SettingsIcon sx={{ mr: 1, fontSize: 20 }} /> Organization Settings
-            </MenuItem>
-            <MenuItem onClick={() => { navigate('/profile'); handleClose(); }}>
-              <PersonIcon sx={{ mr: 1, fontSize: 20 }} /> Profile
-            </MenuItem>
-            <Divider />
-            <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
-              <LogoutIcon sx={{ mr: 1, fontSize: 20 }} /> Logout
+
+            {isAdmin && (
+              <MenuItem onClick={() => { navigate('/tenant-settings'); setAnchorEl(null); }}>
+                <SettingsIcon sx={{ mr: 1.5, fontSize: 18, color: 'text.secondary' }} />
+                Settings
+              </MenuItem>
+            )}
+
+            <Divider sx={{ my: 0.5 }} />
+
+            <MenuItem
+              onClick={handleLogout}
+              sx={{ color: 'error.main', '& .MuiSvgIcon-root': { color: 'error.main' } }}
+            >
+              <LogoutIcon sx={{ mr: 1.5, fontSize: 18 }} />
+              Sign out
             </MenuItem>
           </Menu>
         </Box>

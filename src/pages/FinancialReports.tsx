@@ -35,6 +35,27 @@ const TYPE_COLORS: Record<string, string> = {
   asset: '#2196f3', liability: '#f44336', equity: '#9c27b0', income: '#4caf50', expense: '#ff9800',
 };
 
+const BUCKET_COLORS: Record<string, string> = {
+  current: '#4caf50', '1-30': '#8bc34a', '31-60': '#ff9800', '61-90': '#ff5722', '90+': '#f44336',
+};
+
+// Groups a flat account-balance list by ledger group, preserving each group's own account order.
+// Accounts with no ledger_group_name assigned are bucketed under "Ungrouped" at the end. The
+// caller only renders a sub-header per group when `showHeaders` comes back true, so a tenant
+// that hasn't set up any ledger groups still sees exactly the old flat list under one header.
+const groupByLedgerGroup = (accounts: any[]) => {
+  const groups = new Map<string, any[]>();
+  for (const acc of accounts) {
+    const key = acc.ledger_group_name || 'Ungrouped';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(acc);
+  }
+  const entries = Array.from(groups.entries());
+  entries.sort((a, b) => (a[0] === 'Ungrouped' ? 1 : b[0] === 'Ungrouped' ? -1 : a[0].localeCompare(b[0])));
+  const showHeaders = entries.some(([name]) => name !== 'Ungrouped') && entries.length > 1;
+  return { entries, showHeaders };
+};
+
 const FinancialReports: React.FC = () => {
   const { isManager } = useAuth();
   const [tab, setTab] = useState(0);
@@ -70,9 +91,22 @@ const FinancialReports: React.FC = () => {
     enabled: tab === 3,
   });
 
-  const refetchAll = () => { refetchTB(); refetchIS(); refetchBS(); refetchCF(); };
+  const { data: receivables, isLoading: arLoading, refetch: refetchAR } = useQuery({
+    queryKey: ['receivablesAging'],
+    queryFn: () => accountingService.getReceivablesAging(),
+    enabled: tab === 4,
+  });
 
-  const loading = (tab === 0 && tbLoading) || (tab === 1 && isLoading) || (tab === 2 && bsLoading) || (tab === 3 && cfLoading);
+  const { data: payables, isLoading: apLoading, refetch: refetchAP } = useQuery({
+    queryKey: ['payablesAging'],
+    queryFn: () => accountingService.getPayablesAging(),
+    enabled: tab === 5,
+  });
+
+  const refetchAll = () => { refetchTB(); refetchIS(); refetchBS(); refetchCF(); refetchAR(); refetchAP(); };
+
+  const loading = (tab === 0 && tbLoading) || (tab === 1 && isLoading) || (tab === 2 && bsLoading)
+    || (tab === 3 && cfLoading) || (tab === 4 && arLoading) || (tab === 5 && apLoading);
 
   const renderAccountRows = (accounts: any[], showType = false) => (
     accounts.map((acc: any) => (
@@ -86,6 +120,12 @@ const FinancialReports: React.FC = () => {
       </TableRow>
     ))
   );
+
+  const emptyGroup = { entries: [] as [string, any[]][], showHeaders: false };
+  const groupedIncome = incomeStatement ? groupByLedgerGroup(incomeStatement.income) : emptyGroup;
+  const groupedExpenses = incomeStatement ? groupByLedgerGroup(incomeStatement.expenses) : emptyGroup;
+  const groupedAssets = balanceSheet ? groupByLedgerGroup(balanceSheet.assets) : emptyGroup;
+  const groupedLiabilities = balanceSheet ? groupByLedgerGroup(balanceSheet.liabilities) : emptyGroup;
 
   if (!isManager) {
     return <AccessDenied />;
@@ -120,6 +160,8 @@ const FinancialReports: React.FC = () => {
           <Tab label="Income Statement" />
           <Tab label="Balance Sheet" />
           <Tab label="Cash Flow" />
+          <Tab label="Receivables" />
+          <Tab label="Payables" />
         </Tabs>
       </Paper>
 
@@ -173,26 +215,40 @@ const FinancialReports: React.FC = () => {
               <TableHead><TableRow sx={{ backgroundColor: '#f5f5f5' }}><TableCell><strong>Code</strong></TableCell><TableCell><strong>Account</strong></TableCell><TableCell align="right"><strong>Debit</strong></TableCell><TableCell align="right"><strong>Credit</strong></TableCell><TableCell align="right"><strong>Balance</strong></TableCell></TableRow></TableHead>
               <TableBody>
                 <TableRow sx={{ backgroundColor: '#e8f5e9' }}><TableCell colSpan={5}><Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#4caf50' }}>Revenue</Typography></TableCell></TableRow>
-                {incomeStatement.income.map((acc: any) => (
-                  <TableRow key={acc.account_id} hover>
-                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, pl: 2 }}>{acc.code}</Typography></TableCell>
-                    <TableCell>{acc.name}</TableCell>
-                    <TableCell align="right">{acc.debit > 0 ? fmt(acc.debit) : '-'}</TableCell>
-                    <TableCell align="right">{acc.credit > 0 ? fmt(acc.credit) : '-'}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600, color: '#4caf50' }}>{fmt(acc.balance)}</TableCell>
-                  </TableRow>
+                {groupedIncome.entries.map(([groupName, accs]) => (
+                  <React.Fragment key={groupName}>
+                    {groupedIncome.showHeaders && (
+                      <TableRow><TableCell colSpan={5} sx={{ py: 0.5, borderBottom: 0 }}><Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', pl: 1 }}>{groupName}</Typography></TableCell></TableRow>
+                    )}
+                    {accs.map((acc: any) => (
+                      <TableRow key={acc.account_id} hover>
+                        <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, pl: 2 }}>{acc.code}</Typography></TableCell>
+                        <TableCell>{acc.name}</TableCell>
+                        <TableCell align="right">{acc.debit > 0 ? fmt(acc.debit) : '-'}</TableCell>
+                        <TableCell align="right">{acc.credit > 0 ? fmt(acc.credit) : '-'}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600, color: '#4caf50' }}>{fmt(acc.balance)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
                 ))}
                 <TableRow sx={{ backgroundColor: '#f1f8f4' }}><TableCell colSpan={4} align="right"><strong>Total Revenue</strong></TableCell><TableCell align="right"><Typography sx={{ fontWeight: 700, color: '#4caf50' }}>{fmt(incomeStatement.total_income)}</Typography></TableCell></TableRow>
 
                 <TableRow sx={{ backgroundColor: '#fff3e0' }}><TableCell colSpan={5}><Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#ff9800' }}>Expenses</Typography></TableCell></TableRow>
-                {incomeStatement.expenses.map((acc: any) => (
-                  <TableRow key={acc.account_id} hover>
-                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, pl: 2 }}>{acc.code}</Typography></TableCell>
-                    <TableCell>{acc.name}</TableCell>
-                    <TableCell align="right">{acc.debit > 0 ? fmt(acc.debit) : '-'}</TableCell>
-                    <TableCell align="right">{acc.credit > 0 ? fmt(acc.credit) : '-'}</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600, color: '#ff9800' }}>{fmt(acc.balance)}</TableCell>
-                  </TableRow>
+                {groupedExpenses.entries.map(([groupName, accs]) => (
+                  <React.Fragment key={groupName}>
+                    {groupedExpenses.showHeaders && (
+                      <TableRow><TableCell colSpan={5} sx={{ py: 0.5, borderBottom: 0 }}><Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', pl: 1 }}>{groupName}</Typography></TableCell></TableRow>
+                    )}
+                    {accs.map((acc: any) => (
+                      <TableRow key={acc.account_id} hover>
+                        <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, pl: 2 }}>{acc.code}</Typography></TableCell>
+                        <TableCell>{acc.name}</TableCell>
+                        <TableCell align="right">{acc.debit > 0 ? fmt(acc.debit) : '-'}</TableCell>
+                        <TableCell align="right">{acc.credit > 0 ? fmt(acc.credit) : '-'}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600, color: '#ff9800' }}>{fmt(acc.balance)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
                 ))}
                 <TableRow sx={{ backgroundColor: '#fff8e1' }}><TableCell colSpan={4} align="right"><strong>Total Expenses</strong></TableCell><TableCell align="right"><Typography sx={{ fontWeight: 700, color: '#ff9800' }}>{fmt(incomeStatement.total_expenses)}</Typography></TableCell></TableRow>
 
@@ -222,14 +278,28 @@ const FinancialReports: React.FC = () => {
               <TableHead><TableRow sx={{ backgroundColor: '#f5f5f5' }}><TableCell><strong>Code</strong></TableCell><TableCell><strong>Account</strong></TableCell><TableCell align="right"><strong>Amount</strong></TableCell></TableRow></TableHead>
               <TableBody>
                 <TableRow sx={{ backgroundColor: '#e3f2fd' }}><TableCell colSpan={3}><Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#2196f3' }}>Assets</Typography></TableCell></TableRow>
-                {balanceSheet.assets.map((acc: any) => (
-                  <TableRow key={acc.account_id} hover><TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, pl: 2 }}>{acc.code}</Typography></TableCell><TableCell>{acc.name}</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{fmt(acc.balance)}</TableCell></TableRow>
+                {groupedAssets.entries.map(([groupName, accs]) => (
+                  <React.Fragment key={groupName}>
+                    {groupedAssets.showHeaders && (
+                      <TableRow><TableCell colSpan={3} sx={{ py: 0.5, borderBottom: 0 }}><Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', pl: 1 }}>{groupName}</Typography></TableCell></TableRow>
+                    )}
+                    {accs.map((acc: any) => (
+                      <TableRow key={acc.account_id} hover><TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, pl: 2 }}>{acc.code}</Typography></TableCell><TableCell>{acc.name}</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{fmt(acc.balance)}</TableCell></TableRow>
+                    ))}
+                  </React.Fragment>
                 ))}
                 <TableRow sx={{ backgroundColor: '#bbdefb' }}><TableCell colSpan={2} align="right"><strong>Total Assets</strong></TableCell><TableCell align="right"><Typography sx={{ fontWeight: 700, color: '#2196f3' }}>{fmt(balanceSheet.total_assets)}</Typography></TableCell></TableRow>
 
                 <TableRow sx={{ backgroundColor: '#ffebee' }}><TableCell colSpan={3}><Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#f44336' }}>Liabilities</Typography></TableCell></TableRow>
-                {balanceSheet.liabilities.map((acc: any) => (
-                  <TableRow key={acc.account_id} hover><TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, pl: 2 }}>{acc.code}</Typography></TableCell><TableCell>{acc.name}</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{fmt(acc.balance)}</TableCell></TableRow>
+                {groupedLiabilities.entries.map(([groupName, accs]) => (
+                  <React.Fragment key={groupName}>
+                    {groupedLiabilities.showHeaders && (
+                      <TableRow><TableCell colSpan={3} sx={{ py: 0.5, borderBottom: 0 }}><Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', pl: 1 }}>{groupName}</Typography></TableCell></TableRow>
+                    )}
+                    {accs.map((acc: any) => (
+                      <TableRow key={acc.account_id} hover><TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, pl: 2 }}>{acc.code}</Typography></TableCell><TableCell>{acc.name}</TableCell><TableCell align="right" sx={{ fontWeight: 600 }}>{fmt(acc.balance)}</TableCell></TableRow>
+                    ))}
+                  </React.Fragment>
                 ))}
                 <TableRow sx={{ backgroundColor: '#ffcdd2' }}><TableCell colSpan={2} align="right"><strong>Total Liabilities</strong></TableCell><TableCell align="right"><Typography sx={{ fontWeight: 700, color: '#f44336' }}>{fmt(balanceSheet.total_liabilities)}</Typography></TableCell></TableRow>
 
@@ -310,6 +380,120 @@ const FinancialReports: React.FC = () => {
               </Collapse>
             </Box>
           ))}
+        </Paper>
+      )}
+
+      {/* Receivables Aging */}
+      {tab === 4 && !arLoading && receivables && (
+        <Paper sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+          <Box sx={{ p: 2, borderBottom: '1px solid #eee' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>Accounts Receivable Aging</Typography>
+            <Typography variant="body2" color="textSecondary">Outstanding customer invoices as of {receivables.as_of}</Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2, p: 2, flexWrap: 'wrap' }}>
+            {Object.entries(receivables.buckets).map(([bucket, amount]: any) => (
+              <Paper key={bucket} sx={{ p: 2, flex: '1 1 140px', borderRadius: 2, bgcolor: `${BUCKET_COLORS[bucket]}15` }}>
+                <Typography variant="caption" color="textSecondary" sx={{ textTransform: 'capitalize' }}>{bucket === 'current' ? 'Current' : `${bucket} days`}</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: BUCKET_COLORS[bucket] }}>{fmt(amount)}</Typography>
+              </Paper>
+            ))}
+            <Paper sx={{ p: 2, flex: '1 1 140px', borderRadius: 2, bgcolor: '#f5f5f5' }}>
+              <Typography variant="caption" color="textSecondary">Total Outstanding</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>{fmt(receivables.total_outstanding)}</Typography>
+            </Paper>
+          </Box>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                  <TableCell><strong>Invoice #</strong></TableCell>
+                  <TableCell><strong>Customer</strong></TableCell>
+                  <TableCell><strong>Due Date</strong></TableCell>
+                  <TableCell align="right"><strong>Total</strong></TableCell>
+                  <TableCell align="right"><strong>Paid</strong></TableCell>
+                  <TableCell align="right"><strong>Outstanding</strong></TableCell>
+                  <TableCell><strong>Aging</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {receivables.invoices.length === 0 ? (
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="textSecondary">No outstanding receivables</Typography></TableCell></TableRow>
+                ) : receivables.invoices.map((inv: any) => (
+                  <TableRow key={inv.invoice_id} hover>
+                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{inv.invoice_number}</Typography></TableCell>
+                    <TableCell>{inv.customer_name}</TableCell>
+                    <TableCell>{new Date(inv.due_date).toLocaleDateString()}</TableCell>
+                    <TableCell align="right">{fmt(inv.total_amount)}</TableCell>
+                    <TableCell align="right">{fmt(inv.amount_paid)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>{fmt(inv.outstanding)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={inv.bucket === 'current' ? 'Current' : `${inv.bucket} days`}
+                        size="small"
+                        sx={{ bgcolor: `${BUCKET_COLORS[inv.bucket]}15`, color: BUCKET_COLORS[inv.bucket], fontWeight: 600 }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
+
+      {/* Payables Aging */}
+      {tab === 5 && !apLoading && payables && (
+        <Paper sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+          <Box sx={{ p: 2, borderBottom: '1px solid #eee' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>Accounts Payable Aging</Typography>
+            <Typography variant="body2" color="textSecondary">
+              Accounting-approved, unpaid expense claims as of {payables.as_of} — this system tracks payables through expense claim reimbursements rather than a separate vendor-bill ledger
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2, p: 2, flexWrap: 'wrap' }}>
+            {Object.entries(payables.buckets).map(([bucket, amount]: any) => (
+              <Paper key={bucket} sx={{ p: 2, flex: '1 1 140px', borderRadius: 2, bgcolor: `${BUCKET_COLORS[bucket]}15` }}>
+                <Typography variant="caption" color="textSecondary" sx={{ textTransform: 'capitalize' }}>{bucket === 'current' ? 'Current' : `${bucket} days`}</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: BUCKET_COLORS[bucket] }}>{fmt(amount)}</Typography>
+              </Paper>
+            ))}
+            <Paper sx={{ p: 2, flex: '1 1 140px', borderRadius: 2, bgcolor: '#f5f5f5' }}>
+              <Typography variant="caption" color="textSecondary">Total Outstanding</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>{fmt(payables.total_outstanding)}</Typography>
+            </Paper>
+          </Box>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                  <TableCell><strong>Claim #</strong></TableCell>
+                  <TableCell><strong>Employee</strong></TableCell>
+                  <TableCell><strong>Approved</strong></TableCell>
+                  <TableCell align="right"><strong>Amount</strong></TableCell>
+                  <TableCell><strong>Aging</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {payables.claims.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><Typography color="textSecondary">No outstanding payables</Typography></TableCell></TableRow>
+                ) : payables.claims.map((claim: any) => (
+                  <TableRow key={claim.claim_id} hover>
+                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{claim.claim_number}</Typography></TableCell>
+                    <TableCell>{claim.employee_name || '-'}</TableCell>
+                    <TableCell>{new Date(claim.approved_date).toLocaleDateString()}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>{fmt(claim.amount)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={claim.bucket === 'current' ? 'Current' : `${claim.bucket} days`}
+                        size="small"
+                        sx={{ bgcolor: `${BUCKET_COLORS[claim.bucket]}15`, color: BUCKET_COLORS[claim.bucket], fontWeight: 600 }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
       )}
     </Box>
