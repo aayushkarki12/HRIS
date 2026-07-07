@@ -34,7 +34,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
-import { payrollService, employeeService } from '../services/api';
+import { payrollService, employeeService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const fmt = (n: number) => `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -87,7 +87,7 @@ const Payroll: React.FC = () => {
       setSalaryError('');
     },
     onError: (error: any) => {
-      const msg = error.response?.data?.detail || 'Failed to create salary structure';
+      const msg = getErrorMessage(error, 'Failed to create salary structure');
       toast.error(msg);
       setSalaryError(msg);
     },
@@ -103,7 +103,7 @@ const Payroll: React.FC = () => {
       setRunError('');
     },
     onError: (error: any) => {
-      const msg = error.response?.data?.detail || 'Failed to create payroll run';
+      const msg = getErrorMessage(error, 'Failed to create payroll run');
       toast.error(msg);
       setRunError(msg);
     },
@@ -118,7 +118,7 @@ const Payroll: React.FC = () => {
       toast.success('Payroll processed and journal entry created');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.detail || 'Failed to process payroll');
+      toast.error(getErrorMessage(error, 'Failed to process payroll'));
     },
   });
 
@@ -129,7 +129,7 @@ const Payroll: React.FC = () => {
       toast.success('Payroll run deleted');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.detail || 'Failed to delete payroll run');
+      toast.error(getErrorMessage(error, 'Failed to delete payroll run'));
     },
   });
 

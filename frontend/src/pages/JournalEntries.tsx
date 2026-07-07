@@ -35,7 +35,7 @@ import {
   RemoveCircleOutlined as RemoveLineIcon,
   AddCircleOutlined as AddLineIcon,
 } from '@mui/icons-material';
-import { accountingService } from '../services/api';
+import { accountingService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AccessDenied from '../components/common/AccessDenied';
 
@@ -89,7 +89,7 @@ const JournalEntries: React.FC = () => {
       handleCloseModal();
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to create journal entry';
+      const errorMsg = getErrorMessage(error, 'Failed to create journal entry');
       toast.error(errorMsg);
       setError(errorMsg);
     },
@@ -102,7 +102,7 @@ const JournalEntries: React.FC = () => {
       toast.success('Journal entry posted successfully');
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to post journal entry';
+      const errorMsg = getErrorMessage(error, 'Failed to post journal entry');
       toast.error(errorMsg);
     },
   });
@@ -114,7 +114,7 @@ const JournalEntries: React.FC = () => {
       toast.success('Journal entry deleted');
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to delete journal entry';
+      const errorMsg = getErrorMessage(error, 'Failed to delete journal entry');
       toast.error(errorMsg);
     },
   });

@@ -17,7 +17,7 @@ class Employee(Base):
     position = Column(String(50), nullable=False)
     joining_date = Column(Date, nullable=False)
     is_active = Column(Boolean, default=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     
     # Self-service fields
@@ -44,6 +44,7 @@ class Employee(Base):
     user = relationship("User", back_populates="employee")
     tenant = relationship("Tenant", back_populates="employees")
     assignments = relationship("Assignment", back_populates="employee", cascade="all, delete-orphan")
+    project_memberships = relationship("ProjectMember", back_populates="employee", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="employee", cascade="all, delete-orphan")
     leaves = relationship("Leave", back_populates="employee", cascade="all, delete-orphan")
     leave_balances = relationship("LeaveBalance", back_populates="employee", cascade="all, delete-orphan")

@@ -30,7 +30,7 @@ import {
   Pending as PendingIcon,
   Upload as UploadIcon,
 } from '@mui/icons-material';
-import { documentService } from '../services/api';
+import { documentService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const Documents: React.FC = () => {
@@ -38,6 +38,7 @@ const Documents: React.FC = () => {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [documentName, setDocumentName] = useState<string>('');
   const [documentType, setDocumentType] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [uploading, setUploading] = useState(false);
@@ -51,21 +52,24 @@ const Documents: React.FC = () => {
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (!selectedFile) throw new Error('No file selected');
-      return documentService.upload(selectedFile, documentType, description);
+      return documentService.upload(selectedFile, documentType, documentName || selectedFile.name, description);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       toast.success('Document uploaded successfully');
       setIsModalOpen(false);
       setSelectedFile(null);
+      setDocumentName('');
       setDocumentType('');
       setDescription('');
       setError('');
+      setUploading(false);
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to upload document';
+      const errorMsg = getErrorMessage(error, 'Failed to upload document');
       toast.error(errorMsg);
       setError(errorMsg);
+      setUploading(false);
     },
   });
 
@@ -76,7 +80,7 @@ const Documents: React.FC = () => {
       toast.success('Document deleted successfully');
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to delete document';
+      const errorMsg = getErrorMessage(error, 'Failed to delete document');
       toast.error(errorMsg);
     },
   });
@@ -88,7 +92,7 @@ const Documents: React.FC = () => {
       toast.success('Document verified successfully');
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to verify document';
+      const errorMsg = getErrorMessage(error, 'Failed to verify document');
       toast.error(errorMsg);
     },
   });
@@ -271,6 +275,15 @@ const Documents: React.FC = () => {
           )}
           <TextField
             fullWidth
+            label="Document Name"
+            value={documentName}
+            onChange={(e) => setDocumentName(e.target.value)}
+            margin="normal"
+            size="small"
+            placeholder="e.g. My Passport, Employment Contract 2024"
+          />
+          <TextField
+            fullWidth
             select
             label="Document Type"
             value={documentType}
@@ -313,7 +326,7 @@ const Documents: React.FC = () => {
           <Button
             variant="contained"
             onClick={handleUpload}
-            disabled={!selectedFile || !documentType || uploading}
+            disabled={!selectedFile || !documentType || !documentName.trim() || uploading}
           >
             {uploading ? 'Uploading...' : 'Upload'}
           </Button>

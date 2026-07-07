@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Container,
-  Paper,
   TextField,
   Button,
   Typography,
@@ -21,96 +19,41 @@ import BusinessIcon from '@mui/icons-material/Business';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
-import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import { motion } from 'framer-motion';
+
+const DEPARTMENTS = ['General','Engineering','Human Resources','Finance','Marketing','Sales','Operations','IT','Legal','Administration'];
+const POSITIONS   = ['Staff','Junior Developer','Senior Developer','Team Lead','Manager','Director','VP','Executive','Intern','Consultant'];
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
   const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    username: '',
-    password: '',
-    confirm_password: '',
-    phone: '',
-    department: 'General',
-    position: 'Staff',
+    first_name: '', last_name: '', email: '', username: '',
+    password: '', confirm_password: '', phone: '',
+    department: 'General', position: 'Staff',
     join_date: new Date().toISOString().split('T')[0],
-    tenant_subdomain: 'default', // Add tenant subdomain field
+    tenant_subdomain: 'default',
   });
-  const [error, setError] = useState<string>('');
-  const [success, setSuccess] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
+  const [error, setError]     = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPwd, setShowPwd]         = useState(false);
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
 
-  // Fetch available tenants (for admin or tenant selection)
-  const { data: tenants, isLoading: tenantsLoading } = useQuery({
-    queryKey: ['tenants'],
-    queryFn: async () => {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/tenants`);
-      return response.data;
-    },
-    enabled: false, // Only enable for admin users
-  });
-
-  const departments = [
-    'General',
-    'Engineering',
-    'Human Resources',
-    'Finance',
-    'Marketing',
-    'Sales',
-    'Operations',
-    'IT',
-    'Legal',
-    'Administration',
-  ];
-
-  const positions = [
-    'Staff',
-    'Junior Developer',
-    'Senior Developer',
-    'Team Lead',
-    'Manager',
-    'Director',
-    'VP',
-    'Executive',
-    'Intern',
-    'Consultant',
-  ];
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
     setSuccess('');
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.password !== formData.confirm_password) { setError('Passwords do not match'); return; }
+    if (formData.password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setLoading(true);
     setError('');
-    setSuccess('');
-
-    // Validate passwords match
-    if (formData.password !== formData.confirm_password) {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
-
-    // Validate password length
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      setLoading(false);
-      return;
-    }
-
     try {
-      // Prepare registration data with tenant info
-      const registrationData = {
+      const result = await register({
         username: formData.username.trim(),
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
@@ -121,366 +64,141 @@ const Register: React.FC = () => {
         position: formData.position || 'Staff',
         join_date: formData.join_date || new Date().toISOString().split('T')[0],
         tenant_subdomain: formData.tenant_subdomain || 'default',
-      };
-
-      console.log('Sending registration data:', registrationData);
-
-      const result = await register(registrationData);
-      
+      });
       if (result.success) {
-        setSuccess('Registration successful! You can now login.');
-        setFormData({
-          first_name: '',
-          last_name: '',
-          email: '',
-          username: '',
-          password: '',
-          confirm_password: '',
-          phone: '',
-          department: 'General',
-          position: 'Staff',
-          join_date: new Date().toISOString().split('T')[0],
-          tenant_subdomain: 'default',
-        });
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
+        setSuccess('Account created! Redirecting to sign in…');
+        setTimeout(() => navigate('/login'), 2000);
       } else {
         setError(result.error || 'Registration failed. Please try again.');
       }
     } catch (err: any) {
-      console.error('Registration error:', err);
-      let errorMsg = 'An unexpected error occurred. Please try again.';
-      if (err.response?.data?.detail) {
-        if (typeof err.response.data.detail === 'string') {
-          errorMsg = err.response.data.detail;
-        } else if (Array.isArray(err.response.data.detail)) {
-          errorMsg = err.response.data.detail.map((d: any) => d.msg).join(', ');
-        }
-      }
-      setError(errorMsg);
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg).join(', ') : 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: 2,
-      }}
-    >
-      <Container maxWidth="sm">
-        <Paper
-          elevation={24}
-          sx={{
-            p: 4,
-            borderRadius: 3,
-            background: 'rgba(255, 255, 255, 0.95)',
-            backdropFilter: 'blur(10px)',
-            maxHeight: '90vh',
-            overflow: 'auto',
-          }}
+    <Box sx={{ minHeight: '100vh', display: 'flex', bgcolor: '#F8FAFC' }}>
+      {/* Left panel */}
+      <Box
+        sx={{
+          display: { xs: 'none', md: 'flex' },
+          flex: '0 0 380px',
+          bgcolor: 'primary.main',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          px: 6,
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{ position: 'absolute', top: -60, right: -60, width: 240, height: 240, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
+        <Box sx={{ position: 'absolute', bottom: -40, left: -40, width: 180, height: 180, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
+        <Box sx={{ width: 48, height: 48, borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
+          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.25rem', letterSpacing: '-0.02em' }}>H</Typography>
+        </Box>
+        <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, mb: 1.5, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+          Join HRIS System
+        </Typography>
+        <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
+          Create your account and start managing your HR operations efficiently.
+        </Typography>
+      </Box>
+
+      {/* Right panel — form */}
+      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', px: { xs: 2, sm: 4 }, py: 4, overflowY: 'auto' }}>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+          style={{ width: '100%', maxWidth: 460 }}
         >
-          {/* Header */}
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <Box
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 56,
-                height: 56,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                mb: 1.5,
-              }}
-            >
-              <BusinessIcon sx={{ fontSize: 28, color: 'white' }} />
+          <Box sx={{ mb: 3 }}>
+            <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1, mb: 3 }}>
+              <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.875rem' }}>H</Typography>
+              </Box>
+              <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>HRIS System</Typography>
             </Box>
-            <Typography
-              variant="h5"
-              sx={{
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                mb: 0.5,
-              }}
-            >
-              Create Account
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Join HRIS System today
-            </Typography>
+            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mb: 0.5 }}>Create an account</Typography>
+            <Typography variant="body2" color="text.secondary">Fill in the details below to get started</Typography>
           </Box>
 
-          <Divider sx={{ mb: 2.5 }} />
-
-          {error && (
-            <Alert severity="error" sx={{ mb: 2, borderRadius: 1.5 }} onClose={() => setError('')}>
-              {error}
-            </Alert>
-          )}
-
-          {success && (
-            <Alert severity="success" sx={{ mb: 2, borderRadius: 1.5 }} onClose={() => setSuccess('')}>
-              {success}
-            </Alert>
-          )}
+          {error   && <Alert severity="error"   sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+          {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
           <form onSubmit={handleSubmit}>
-            {/* Tenant/Organization Field */}
+            {/* Organization */}
+            <Typography variant="overline" color="text.disabled" sx={{ fontSize: '0.65rem', letterSpacing: '0.08em', mb: 1, display: 'block' }}>
+              Organization
+            </Typography>
             <TextField
-              fullWidth
-              label="Organization Subdomain *"
-              name="tenant_subdomain"
-              value={formData.tenant_subdomain}
-              onChange={handleChange}
-              required
-              variant="outlined"
-              size="small"
-              sx={{ mb: 1.5 }}
-              helperText="Enter your organization's unique subdomain (e.g., 'mycompany')"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <BusinessIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
+              fullWidth label="Organization Subdomain" name="tenant_subdomain"
+              value={formData.tenant_subdomain} onChange={handleChange}
+              required size="small" sx={{ mb: 2.5 }}
+              helperText="Your organization's unique subdomain (e.g. 'mycompany')"
+              slotProps={{ input: { startAdornment: <InputAdornment position="start"><BusinessIcon sx={{ fontSize: 16, color: 'text.disabled' }} /></InputAdornment> } }}
             />
 
-            <Box sx={{ display: 'flex', gap: 2, mb: 1.5 }}>
-              <TextField
-                fullWidth
-                label="First Name *"
-                name="first_name"
-                value={formData.first_name}
-                onChange={handleChange}
-                required
-                variant="outlined"
-                size="small"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <PersonIcon color="action" fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                fullWidth
-                label="Last Name *"
-                name="last_name"
-                value={formData.last_name}
-                onChange={handleChange}
-                required
-                variant="outlined"
-                size="small"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <PersonIcon color="action" fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
+            {/* Personal info */}
+            <Typography variant="overline" color="text.disabled" sx={{ fontSize: '0.65rem', letterSpacing: '0.08em', mb: 1, display: 'block' }}>
+              Personal Info
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mb: 1.5 }}>
+              <TextField fullWidth label="First Name" name="first_name" value={formData.first_name} onChange={handleChange} required size="small"
+                slotProps={{ input: { startAdornment: <InputAdornment position="start"><PersonIcon sx={{ fontSize: 16, color: 'text.disabled' }} /></InputAdornment> } }} />
+              <TextField fullWidth label="Last Name" name="last_name" value={formData.last_name} onChange={handleChange} required size="small"
+                slotProps={{ input: { startAdornment: <InputAdornment position="start"><PersonIcon sx={{ fontSize: 16, color: 'text.disabled' }} /></InputAdornment> } }} />
+            </Box>
+            <TextField fullWidth label="Email" name="email" type="email" value={formData.email} onChange={handleChange} required size="small" sx={{ mb: 1.5 }}
+              slotProps={{ input: { startAdornment: <InputAdornment position="start"><EmailIcon sx={{ fontSize: 16, color: 'text.disabled' }} /></InputAdornment> } }} />
+            <TextField fullWidth label="Phone" name="phone" value={formData.phone} onChange={handleChange} size="small" sx={{ mb: 2.5 }} placeholder="Optional" />
+
+            {/* Account */}
+            <Typography variant="overline" color="text.disabled" sx={{ fontSize: '0.65rem', letterSpacing: '0.08em', mb: 1, display: 'block' }}>
+              Account Credentials
+            </Typography>
+            <TextField fullWidth label="Username" name="username" value={formData.username} onChange={handleChange} required size="small" sx={{ mb: 1.5 }}
+              helperText="Alphanumeric, no spaces" />
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mb: 2.5 }}>
+              <TextField fullWidth label="Password" name="password" type={showPwd ? 'text' : 'password'} value={formData.password} onChange={handleChange} required size="small" helperText="Min 6 chars"
+                slotProps={{ input: { startAdornment: <InputAdornment position="start"><LockIcon sx={{ fontSize: 16, color: 'text.disabled' }} /></InputAdornment>,
+                  endAdornment: <InputAdornment position="end"><IconButton onClick={() => setShowPwd(!showPwd)} edge="end" size="small">{showPwd ? <VisibilityOff sx={{ fontSize: 16 }} /> : <Visibility sx={{ fontSize: 16 }} />}</IconButton></InputAdornment> } }} />
+              <TextField fullWidth label="Confirm Password" name="confirm_password" type={showConfirmPwd ? 'text' : 'password'} value={formData.confirm_password} onChange={handleChange} required size="small"
+                slotProps={{ input: { endAdornment: <InputAdornment position="end"><IconButton onClick={() => setShowConfirmPwd(!showConfirmPwd)} edge="end" size="small">{showConfirmPwd ? <VisibilityOff sx={{ fontSize: 16 }} /> : <Visibility sx={{ fontSize: 16 }} />}</IconButton></InputAdornment> } }} />
             </Box>
 
-            <TextField
-              fullWidth
-              label="Email *"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              variant="outlined"
-              size="small"
-              sx={{ mb: 1.5 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            <TextField
-              fullWidth
-              label="Username *"
-              name="username"
-              value={formData.username}
-              onChange={handleChange}
-              required
-              variant="outlined"
-              size="small"
-              sx={{ mb: 1.5 }}
-              helperText="Username must be alphanumeric"
-            />
-
-            <Box sx={{ display: 'flex', gap: 2, mb: 1.5 }}>
-              <TextField
-                fullWidth
-                label="Password *"
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                value={formData.password}
-                onChange={handleChange}
-                required
-                variant="outlined"
-                size="small"
-                helperText="Min 6 characters"
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton onClick={() => setShowPassword(!showPassword)} edge="end" size="small">
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                fullWidth
-                label="Confirm Password *"
-                name="confirm_password"
-                type={showConfirmPassword ? 'text' : 'password'}
-                value={formData.confirm_password}
-                onChange={handleChange}
-                required
-                variant="outlined"
-                size="small"
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton 
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)} 
-                        edge="end" 
-                        size="small"
-                      >
-                        {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Box>
-
-            <TextField
-              fullWidth
-              label="Phone Number"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              variant="outlined"
-              size="small"
-              placeholder="1234567890"
-              helperText="Optional but recommended"
-              sx={{ mb: 1.5 }}
-            />
-
-            <Box sx={{ display: 'flex', gap: 2, mb: 1.5 }}>
-              <TextField
-                fullWidth
-                select
-                label="Department"
-                name="department"
-                value={formData.department}
-                onChange={handleChange}
-                variant="outlined"
-                size="small"
-              >
-                {departments.map((dept) => (
-                  <MenuItem key={dept} value={dept}>
-                    {dept}
-                  </MenuItem>
-                ))}
+            {/* HR Info */}
+            <Typography variant="overline" color="text.disabled" sx={{ fontSize: '0.65rem', letterSpacing: '0.08em', mb: 1, display: 'block' }}>
+              HR Details
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mb: 1.5 }}>
+              <TextField fullWidth select label="Department" name="department" value={formData.department} onChange={handleChange} size="small">
+                {DEPARTMENTS.map((d) => <MenuItem key={d} value={d}>{d}</MenuItem>)}
               </TextField>
-              <TextField
-                fullWidth
-                select
-                label="Job Title"
-                name="position"
-                value={formData.position}
-                onChange={handleChange}
-                variant="outlined"
-                size="small"
-                helperText="This is just your job title for HR records"
-              >
-                {positions.map((pos) => (
-                  <MenuItem key={pos} value={pos}>
-                    {pos}
-                  </MenuItem>
-                ))}
+              <TextField fullWidth select label="Job Title" name="position" value={formData.position} onChange={handleChange} size="small">
+                {POSITIONS.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
               </TextField>
             </Box>
+            <TextField fullWidth label="Join Date" name="join_date" type="date" value={formData.join_date} onChange={handleChange} size="small" sx={{ mb: 3 }}
+              slotProps={{ inputLabel: { shrink: true } }} />
 
-            <TextField
-              fullWidth
-              label="Join Date"
-              name="join_date"
-              type="date"
-              value={formData.join_date}
-              onChange={handleChange}
-              variant="outlined"
-              size="small"
-              slotProps={{
-                inputLabel: { shrink: true },
-              }}
-              sx={{ mb: 2 }}
-            />
-
-            <Button
-              fullWidth
-              type="submit"
-              variant="contained"
-              disabled={loading}
-              sx={{
-                py: 1.2,
-                borderRadius: 2,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)',
-                '&:hover': {
-                  transform: 'translateY(-1px)',
-                  boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
-                },
-                textTransform: 'none',
-                fontWeight: 600,
-                fontSize: '0.95rem',
-              }}
-            >
-              {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
+            <Button fullWidth type="submit" variant="contained" size="large" disabled={loading} sx={{ py: 1.25, fontWeight: 600 }}>
+              {loading ? <CircularProgress size={20} color="inherit" /> : 'Create Account'}
             </Button>
           </form>
 
-          <Box sx={{ textAlign: 'center', mt: 2 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Already have an account?{' '}
-              <Button
-                component={RouterLink}
-                to="/login"
-                sx={{
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  color: '#667eea',
-                  '&:hover': { color: '#764ba2' },
-                }}
-              >
-                Sign In
-              </Button>
-            </Typography>
-          </Box>
-        </Paper>
-      </Container>
+          <Divider sx={{ my: 3 }} />
+          <Typography variant="body2" color="text.secondary" align="center">
+            Already have an account?{' '}
+            <Button component={RouterLink} to="/login" size="small" sx={{ fontWeight: 600, p: 0, minWidth: 0, verticalAlign: 'baseline' }}>
+              Sign In
+            </Button>
+          </Typography>
+        </motion.div>
+      </Box>
     </Box>
   );
 };

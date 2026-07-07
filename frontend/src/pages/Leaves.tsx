@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -6,7 +6,6 @@ import {
   Paper,
   Typography,
   Button,
-  Grid,
   Card,
   CardContent,
   Table,
@@ -21,32 +20,56 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  CircularProgress,
   Alert,
   MenuItem,
   IconButton,
+  Skeleton,
+  Tooltip,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Refresh as RefreshIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-  EventNote as EventIcon,
   CheckCircle as ApprovedIcon,
   Pending as PendingIcon,
   Cancel as CancelIcon,
+  EventBusy as RejectIcon,
 } from '@mui/icons-material';
-import { leaveService } from '../services/api';
+import { motion } from 'framer-motion';
+import { leaveService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 8 },
+  visible: (i: number) => ({
+    opacity: 1, y: 0,
+    transition: { duration: 0.2, delay: i * 0.05, ease: [0.25, 0.46, 0.45, 0.94] },
+  }),
+};
+
+type LeaveStatus = 'approved' | 'pending' | 'rejected' | 'cancelled';
+
+const STATUS_META: Record<LeaveStatus, { color: 'success' | 'warning' | 'error' | 'default'; icon: React.ReactNode }> = {
+  approved: { color: 'success', icon: <ApprovedIcon sx={{ fontSize: 14 }} /> },
+  pending:  { color: 'warning', icon: <PendingIcon  sx={{ fontSize: 14 }} /> },
+  rejected: { color: 'error',   icon: <CloseIcon    sx={{ fontSize: 14 }} /> },
+  cancelled:{ color: 'default', icon: <CancelIcon   sx={{ fontSize: 14 }} /> },
+};
+
+const fmt = (d: string) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+const FILTERS = ['all', 'pending', 'approved', 'rejected', 'cancelled'] as const;
 
 const Leaves: React.FC = () => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [error, setError] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [rejectTarget, setRejectTarget] = useState<{ id: number; name: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
-  // Form state
   const [formData, setFormData] = useState({
     leave_type_id: '',
     start_date: '',
@@ -54,25 +77,26 @@ const Leaves: React.FC = () => {
     reason: '',
   });
 
-  const { data: leaveTypes } = useQuery({
-    queryKey: ['leaveTypes'],
-    queryFn: leaveService.getTypes,
-  });
-
-  const { data: leaves, isLoading, refetch } = useQuery({
-    queryKey: ['leaves'],
-    queryFn: leaveService.getMyLeaves,
-  });
-
-  const { data: pendingLeaves, refetch: refetchPending } = useQuery({
+  const { data: leaveTypes } = useQuery({ queryKey: ['leaveTypes'], queryFn: leaveService.getTypes });
+  const { data: leaves = [], isLoading, error: leavesError } = useQuery({ queryKey: ['leaves'], queryFn: leaveService.getMyLeaves });
+  const { data: pendingLeaves = [] } = useQuery({
     queryKey: ['pendingLeaves'],
     queryFn: leaveService.getPending,
     enabled: isAdmin,
   });
-
-  const { data: balances } = useQuery({
+  const { data: balances = [], isLoading: balancesLoading } = useQuery({
     queryKey: ['leaveBalances'],
     queryFn: leaveService.getBalance,
+    retry: (failCount, err: any) => err?.response?.status !== 404 && failCount < 2,
+  });
+
+  const calcBalancesMutation = useMutation({
+    mutationFn: () => leaveService.calculateBalances(new Date().getFullYear()),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['leaveBalances'] });
+      toast.success(data?.message || 'Leave balances calculated');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to calculate balances')),
   });
 
   const createMutation = useMutation({
@@ -80,15 +104,15 @@ const Leaves: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
       queryClient.invalidateQueries({ queryKey: ['leaveBalances'] });
-      toast.success('Leave request submitted successfully');
+      toast.success('Leave request submitted');
       setIsModalOpen(false);
       setFormData({ leave_type_id: '', start_date: '', end_date: '', reason: '' });
       setError('');
     },
-    onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to submit leave request';
-      toast.error(errorMsg);
-      setError(errorMsg);
+    onError: (err: any) => {
+      const msg = getErrorMessage(err, 'Failed to submit leave request');
+      toast.error(msg);
+      setError(msg);
     },
   });
 
@@ -98,12 +122,9 @@ const Leaves: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
       queryClient.invalidateQueries({ queryKey: ['pendingLeaves'] });
       queryClient.invalidateQueries({ queryKey: ['leaveBalances'] });
-      toast.success('Leave approved successfully');
+      toast.success('Leave approved');
     },
-    onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to approve leave';
-      toast.error(errorMsg);
-    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to approve leave')),
   });
 
   const rejectMutation = useMutation({
@@ -112,11 +133,10 @@ const Leaves: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
       queryClient.invalidateQueries({ queryKey: ['pendingLeaves'] });
       toast.success('Leave rejected');
+      setRejectTarget(null);
+      setRejectReason('');
     },
-    onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to reject leave';
-      toast.error(errorMsg);
-    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to reject leave')),
   });
 
   const cancelMutation = useMutation({
@@ -125,304 +145,393 @@ const Leaves: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
       toast.success('Leave cancelled');
     },
-    onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to cancel leave';
-      toast.error(errorMsg);
-    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to cancel leave')),
   });
 
-  const handleSubmit = () => {
-    setError('');
-    createMutation.mutate();
-  };
-
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'approved': return 'success';
-      case 'pending': return 'warning';
-      case 'rejected': return 'error';
-      case 'cancelled': return 'default';
-      default: return 'default';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'approved': return <ApprovedIcon fontSize="small" />;
-      case 'pending': return <PendingIcon fontSize="small" />;
-      case 'rejected': return <CloseIcon fontSize="small" />;
-      case 'cancelled': return <CancelIcon fontSize="small" />;
-      default: return <PendingIcon fontSize="small" />;
-    }
-  };
-
-  const filteredLeaves = leaves?.filter((l: any) => 
-    selectedStatus === 'all' || l.status === selectedStatus
+  const filteredLeaves = useMemo(
+    () => (statusFilter === 'all' ? leaves : (leaves as any[]).filter((l) => l.status === statusFilter)),
+    [leaves, statusFilter],
   );
 
-  if (isLoading) {
+  const StatusChip = ({ status }: { status: string }) => {
+    const meta = STATUS_META[status as LeaveStatus] ?? STATUS_META.pending;
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <CircularProgress />
-      </Box>
+      <Chip
+        icon={meta.icon as React.ReactElement}
+        label={status.charAt(0).toUpperCase() + status.slice(1)}
+        color={meta.color}
+        size="small"
+        sx={{ fontWeight: 500, '& .MuiChip-icon': { fontSize: 14 } }}
+      />
     );
-  }
+  };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#2c3e50' }}>
-            Leave Management
-          </Typography>
-          <Typography variant="body2" color="textSecondary">
-            Request and manage your leaves
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="outlined"
-            startIcon={<RefreshIcon />}
-            onClick={() => {
-              refetch();
-              if (isAdmin) refetchPending();
-            }}
-          >
-            Refresh
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setIsModalOpen(true)}
-          >
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+      <Box>
+        {/* Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+              Leave Management
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+              Request and manage your time off
+            </Typography>
+          </Box>
+          <Button variant="contained" startIcon={<AddIcon />} size="small" onClick={() => setIsModalOpen(true)}>
             Request Leave
           </Button>
         </Box>
-      </Box>
 
-      {/* Leave Balances */}
-      <Typography variant="h6" sx={{ mb: 2 }}>My Leave Balances</Typography>
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {balances?.map((balance: any) => (
-          <Grid item xs={12} sm={6} md={4} key={balance.id}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-              <CardContent>
-                <Typography variant="body2" color="textSecondary" gutterBottom>
-                  {balance.leave_type?.name || 'Leave'}
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 700, color: '#2c3e50' }}>
-                  {balance.remaining_days} days
-                </Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                  <Typography variant="caption" color="textSecondary">
-                    Total: {balance.total_days}
-                  </Typography>
-                  <Typography variant="caption" color="textSecondary">
-                    Used: {balance.used_days}
-                  </Typography>
+        {/* Leave Balances */}
+        <Typography variant="overline" color="text.disabled" sx={{ letterSpacing: '0.08em', mb: 1.5, display: 'block' }}>
+          My Leave Balances
+        </Typography>
+        {(leavesError as any)?.response?.status === 404 && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            No employee record is linked to your account. Ask an admin to create an employee record for you to track leave balances and history.
+          </Alert>
+        )}
+
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+            gap: 2,
+            mb: 4,
+          }}
+        >
+          {balancesLoading
+            ? Array.from({ length: 3 }).map((_, i) => (
+                <Card key={i} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
+                  <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+                    <Skeleton width={80} height={14} sx={{ mb: 1 }} />
+                    <Skeleton width={60} height={36} sx={{ mb: 1 }} />
+                    <Skeleton height={6} sx={{ borderRadius: 3 }} />
+                  </CardContent>
+                </Card>
+              ))
+            : (balances as any[]).length === 0
+            ? (
+                <Box sx={{ gridColumn: '1 / -1' }}>
+                  <Alert
+                    severity="info"
+                    variant="outlined"
+                    action={
+                      isAdmin ? (
+                        <Button
+                          size="small"
+                          color="inherit"
+                          disabled={calcBalancesMutation.isPending}
+                          onClick={() => calcBalancesMutation.mutate()}
+                        >
+                          {calcBalancesMutation.isPending ? 'Calculating…' : 'Calculate Now'}
+                        </Button>
+                      ) : undefined
+                    }
+                  >
+                    Leave balances haven't been calculated yet for {new Date().getFullYear()}.
+                    {!isAdmin && ' Ask an admin to run the balance calculation.'}
+                  </Alert>
                 </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+              )
+            : (balances as any[]).map((balance, i) => {
+                const used = balance.used_days ?? 0;
+                const total = balance.total_days ?? 1;
+                const pct = Math.round((used / total) * 100);
+                return (
+                  <motion.div key={balance.id} custom={i} variants={fadeUp} initial="hidden" animate="visible">
+                    <Card sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
+                      <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+                        <Typography variant="caption" sx={{ fontWeight: 500, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.7rem' }}>
+                          {balance.leave_type?.name ?? 'Leave'}
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mt: 0.75 }}>
+                          <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                            {balance.remaining_days}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">/ {total} days</Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={pct}
+                          sx={{
+                            mt: 1.5, mb: 0.75, height: 4, borderRadius: 2,
+                            bgcolor: 'action.hover',
+                            '& .MuiLinearProgress-bar': { borderRadius: 2 },
+                          }}
+                        />
+                        <Typography variant="caption" color="text.disabled">{used} used · {balance.remaining_days} remaining</Typography>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                );
+              })}
+        </Box>
 
-      {/* Pending Requests (Admin Only) */}
-      {isAdmin && pendingLeaves && pendingLeaves.length > 0 && (
-        <>
-          <Typography variant="h6" sx={{ mb: 2 }}>Pending Requests</Typography>
-          <TableContainer component={Paper} sx={{ mb: 4 }}>
-            <Table>
+        {/* Pending requests — admin only */}
+        {isAdmin && (pendingLeaves as any[]).length > 0 && (
+          <Box sx={{ mb: 4 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+              <Typography variant="overline" color="text.disabled" sx={{ letterSpacing: '0.08em' }}>
+                Pending Approvals
+              </Typography>
+              <Chip label={(pendingLeaves as any[]).length} size="small" color="warning" sx={{ height: 18, fontSize: '0.7rem', fontWeight: 600 }} />
+            </Box>
+            <Paper sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, boxShadow: 'none', overflow: 'hidden' }}>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Employee</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Dates</TableCell>
+                      <TableCell>Days</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(pendingLeaves as any[]).map((leave) => (
+                      <TableRow key={leave.id} hover>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {leave.employee?.first_name} {leave.employee?.last_name}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{leave.leave_type?.name}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {fmt(leave.start_date)} – {fmt(leave.end_date)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{leave.total_days}d</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                            <Tooltip title="Approve">
+                              <IconButton
+                                size="small"
+                                color="success"
+                                disabled={approveMutation.isPending}
+                                onClick={() => approveMutation.mutate(leave.id)}
+                              >
+                                <CheckIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Reject">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => setRejectTarget({
+                                  id: leave.id,
+                                  name: `${leave.employee?.first_name} ${leave.employee?.last_name}`,
+                                })}
+                              >
+                                <CloseIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </Box>
+        )}
+
+        {/* My Leave History */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+          <Typography variant="overline" color="text.disabled" sx={{ letterSpacing: '0.08em' }}>
+            My Leave History
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+            {FILTERS.map((s) => (
+              <Chip
+                key={s}
+                label={s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
+                size="small"
+                onClick={() => setStatusFilter(s)}
+                color={statusFilter === s ? 'primary' : 'default'}
+                variant={statusFilter === s ? 'filled' : 'outlined'}
+                sx={{ fontWeight: 500, cursor: 'pointer' }}
+              />
+            ))}
+          </Box>
+        </Box>
+
+        <Paper sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, boxShadow: 'none', overflow: 'hidden' }}>
+          <TableContainer>
+            <Table size="small" stickyHeader>
               <TableHead>
-                <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                  <TableCell><strong>Employee</strong></TableCell>
-                  <TableCell><strong>Leave Type</strong></TableCell>
-                  <TableCell><strong>Dates</strong></TableCell>
-                  <TableCell><strong>Days</strong></TableCell>
-                  <TableCell><strong>Status</strong></TableCell>
-                  <TableCell align="right"><strong>Actions</strong></TableCell>
+                <TableRow>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Dates</TableCell>
+                  <TableCell>Days</TableCell>
+                  <TableCell>Reason</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {pendingLeaves.map((leave: any) => (
-                  <TableRow key={leave.id} hover>
-                    <TableCell>{leave.employee?.first_name} {leave.employee?.last_name}</TableCell>
-                    <TableCell>{leave.leave_type?.name}</TableCell>
-                    <TableCell>
-                      {new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>{leave.total_days} days</TableCell>
-                    <TableCell>
-                      <Chip
-                        icon={getStatusIcon(leave.status)}
-                        label={leave.status}
-                        color={getStatusColor(leave.status)}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        size="small"
-                        color="success"
-                        onClick={() => approveMutation.mutate(leave.id)}
-                      >
-                        <CheckIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => {
-                          const reason = prompt('Enter rejection reason (optional):');
-                          rejectMutation.mutate({ id: leave.id, reason: reason || undefined });
-                        }}
-                      >
-                        <CloseIcon />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {isLoading
+                  ? Array.from({ length: 4 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <TableCell key={j}><Skeleton height={18} /></TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  : (filteredLeaves as any[]).length > 0
+                  ? (filteredLeaves as any[]).map((leave) => (
+                      <TableRow key={leave.id} hover>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>{leave.leave_type?.name}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                            {fmt(leave.start_date)} – {fmt(leave.end_date)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{leave.total_days}d</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {leave.reason || '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell><StatusChip status={leave.status} /></TableCell>
+                        <TableCell align="right">
+                          {leave.status === 'pending' && (
+                            <Button
+                              size="small"
+                              color="error"
+                              variant="text"
+                              sx={{ fontSize: '0.75rem' }}
+                              disabled={cancelMutation.isPending}
+                              onClick={() => cancelMutation.mutate(leave.id)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  : (
+                    <TableRow>
+                      <TableCell colSpan={6} sx={{ py: 5, textAlign: 'center' }}>
+                        <Typography variant="body2" color="text.disabled">
+                          {statusFilter === 'all' ? 'No leave requests yet' : `No ${statusFilter} requests`}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
               </TableBody>
             </Table>
           </TableContainer>
-        </>
-      )}
+        </Paper>
 
-      {/* My Leaves */}
-      <Typography variant="h6" sx={{ mb: 2 }}>My Leave History</Typography>
-      <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-        {['all', 'pending', 'approved', 'rejected', 'cancelled'].map((status) => (
-          <Chip
-            key={status}
-            label={status.charAt(0).toUpperCase() + status.slice(1)}
-            onClick={() => setSelectedStatus(status)}
-            color={selectedStatus === status ? 'primary' : 'default'}
-            variant={selectedStatus === status ? 'filled' : 'outlined'}
-          />
-        ))}
+        {/* Request Leave dialog */}
+        <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ pb: 1 }}>Request Leave</DialogTitle>
+          <DialogContent sx={{ pt: 1 }}>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            <TextField
+              fullWidth select
+              label="Leave Type"
+              name="leave_type_id"
+              value={formData.leave_type_id}
+              onChange={(e) => setFormData({ ...formData, leave_type_id: e.target.value })}
+              margin="normal"
+              size="small"
+            >
+              <MenuItem value="" disabled>Select leave type</MenuItem>
+              {(leaveTypes as any[] | undefined)?.map((t) => (
+                <MenuItem key={t.id} value={t.id}>
+                  {t.name} ({t.days_per_year} days/year)
+                </MenuItem>
+              ))}
+            </TextField>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mt: 1 }}>
+              <TextField
+                fullWidth label="Start Date" type="date"
+                value={formData.start_date}
+                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                size="small"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                fullWidth label="End Date" type="date"
+                value={formData.end_date}
+                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                size="small"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Box>
+            <TextField
+              fullWidth label="Reason (optional)"
+              value={formData.reason}
+              onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+              margin="normal"
+              size="small"
+              multiline rows={3}
+              placeholder="Briefly describe your reason for leave"
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setIsModalOpen(false)} color="inherit">Cancel</Button>
+            <Button
+              variant="contained"
+              disabled={!formData.leave_type_id || !formData.start_date || !formData.end_date || createMutation.isPending}
+              onClick={() => { setError(''); createMutation.mutate(); }}
+            >
+              {createMutation.isPending ? 'Submitting…' : 'Submit Request'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Reject confirmation dialog */}
+        <Dialog open={!!rejectTarget} onClose={() => { setRejectTarget(null); setRejectReason(''); }} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ pb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ width: 36, height: 36, borderRadius: '50%', bgcolor: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <RejectIcon sx={{ fontSize: 18, color: 'error.main' }} />
+              </Box>
+              Reject Leave
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Rejecting leave request for <strong>{rejectTarget?.name}</strong>.
+            </Typography>
+            <TextField
+              fullWidth label="Reason (optional)"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              size="small"
+              multiline rows={2}
+              placeholder="Let the employee know why"
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => { setRejectTarget(null); setRejectReason(''); }} color="inherit">Cancel</Button>
+            <Button
+              variant="contained" color="error"
+              disabled={rejectMutation.isPending}
+              onClick={() => rejectTarget && rejectMutation.mutate({ id: rejectTarget.id, reason: rejectReason || undefined })}
+            >
+              {rejectMutation.isPending ? 'Rejecting…' : 'Reject'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-              <TableCell><strong>Leave Type</strong></TableCell>
-              <TableCell><strong>Dates</strong></TableCell>
-              <TableCell><strong>Days</strong></TableCell>
-              <TableCell><strong>Reason</strong></TableCell>
-              <TableCell><strong>Status</strong></TableCell>
-              <TableCell align="right"><strong>Actions</strong></TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredLeaves?.map((leave: any) => (
-              <TableRow key={leave.id} hover>
-                <TableCell>{leave.leave_type?.name}</TableCell>
-                <TableCell>
-                  {new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}
-                </TableCell>
-                <TableCell>{leave.total_days} days</TableCell>
-                <TableCell>{leave.reason || '-'}</TableCell>
-                <TableCell>
-                  <Chip
-                    icon={getStatusIcon(leave.status)}
-                    label={leave.status}
-                    color={getStatusColor(leave.status)}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell align="right">
-                  {leave.status === 'pending' && (
-                    <Button
-                      size="small"
-                      color="error"
-                      onClick={() => cancelMutation.mutate(leave.id)}
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {/* Request Dialog */}
-      <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Request Leave</DialogTitle>
-        <DialogContent>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          <TextField
-            fullWidth
-            select
-            label="Leave Type"
-            name="leave_type_id"
-            value={formData.leave_type_id}
-            onChange={handleFormChange}
-            margin="normal"
-            size="small"
-          >
-            <MenuItem value="">Select Leave Type</MenuItem>
-            {leaveTypes?.map((type: any) => (
-              <MenuItem key={type.id} value={type.id}>
-                {type.name} ({type.days_per_year} days/year)
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            fullWidth
-            label="Start Date"
-            type="date"
-            name="start_date"
-            value={formData.start_date}
-            onChange={handleFormChange}
-            margin="normal"
-            size="small"
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
-          <TextField
-            fullWidth
-            label="End Date"
-            type="date"
-            name="end_date"
-            value={formData.end_date}
-            onChange={handleFormChange}
-            margin="normal"
-            size="small"
-            slotProps={{ inputLabel: { shrink: true } }}
-          />
-          <TextField
-            fullWidth
-            label="Reason"
-            name="reason"
-            value={formData.reason}
-            onChange={handleFormChange}
-            margin="normal"
-            size="small"
-            multiline
-            rows={3}
-            placeholder="Optional reason for leave"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIsModalOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={!formData.leave_type_id || !formData.start_date || !formData.end_date || createMutation.isPending}
-          >
-            {createMutation.isPending ? 'Submitting...' : 'Submit Request'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+    </motion.div>
   );
 };
 

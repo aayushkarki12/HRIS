@@ -15,7 +15,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import EmailIcon from '@mui/icons-material/Email';
 import BusinessIcon from '@mui/icons-material/Business';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
-import { authService } from '../services/api';
+import { authService, getErrorMessage } from '../services/api';
 
 const ForgotPassword: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -32,7 +32,7 @@ const ForgotPassword: React.FC = () => {
       await authService.forgotPassword(email.trim().toLowerCase(), tenantSubdomain.trim() || 'default');
       setSubmitted(true);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Something went wrong. Please try again.');
+      setError(getErrorMessage(err, 'Something went wrong. Please try again.'));
     } finally {
       setLoading(false);
     }

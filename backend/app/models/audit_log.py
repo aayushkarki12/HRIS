@@ -25,6 +25,9 @@ class AuditLog(Base):
     entity_type = Column(String(50), nullable=False)  # e.g. "leave", "journal_entry", "salary_structure"
     entity_id = Column(Integer, nullable=True)
     details = Column(Text, nullable=True)  # short human-readable note, not a full diff
+    ip_address = Column(String(45), nullable=True)  # IPv4 or IPv6; null for entries logged without a request
+    user_agent = Column(String(255), nullable=True)
+    severity = Column(String(20), nullable=False, server_default="info")  # info | warning | critical
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     tenant = relationship("Tenant")

@@ -36,7 +36,7 @@ import {
   AddCircleOutlined as AddLineIcon,
   RemoveCircleOutlined as RemoveLineIcon,
 } from '@mui/icons-material';
-import { invoiceService, projectService } from '../services/api';
+import { invoiceService, projectService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AccessDenied from '../components/common/AccessDenied';
 
@@ -92,31 +92,31 @@ const Invoices: React.FC = () => {
   const createMutation = useMutation({
     mutationFn: (data: any) => invoiceService.create(data),
     onSuccess: () => { invalidate(); toast.success('Invoice created'); handleCloseModal(); },
-    onError: (e: any) => { const msg = e.response?.data?.detail || 'Failed'; toast.error(msg); setError(msg); },
+    onError: (e: any) => { const msg = getErrorMessage(e, 'Failed'); toast.error(msg); setError(msg); },
   });
 
   const sendMutation = useMutation({
     mutationFn: (id: number) => invoiceService.send(id),
     onSuccess: () => { invalidate(); toast.success('Invoice sent and journal entry created'); },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed')),
   });
 
   const payMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => invoiceService.recordPayment(id, data),
     onSuccess: () => { invalidate(); toast.success('Payment recorded'); setPayModalOpen(false); setPayForm({ amount: '', payment_date: new Date().toISOString().split('T')[0], payment_method: 'bank_transfer', reference: '' }); },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed')),
   });
 
   const cancelMutation = useMutation({
     mutationFn: (id: number) => invoiceService.cancel(id),
     onSuccess: () => { invalidate(); toast.success('Invoice cancelled'); },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => invoiceService.delete(id),
     onSuccess: () => { invalidate(); toast.success('Invoice deleted'); },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed'),
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed')),
   });
 
   const handleCloseModal = () => {

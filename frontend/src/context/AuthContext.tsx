@@ -205,11 +205,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async (): Promise<void> => {
     // Revokes the refresh token server-side so it can't be used again, then
-    // clears local session state regardless of whether that call succeeds.
+    // clears ALL local session state so no stale data leaks to the next login.
     await authService.logout();
     setUser(null);
     setTenant(null);
-    delete localStorage.__tenant;
+    localStorage.removeItem('user');
+    localStorage.removeItem('tenant');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
   };
 
   const isAuthenticated: boolean = !!user;

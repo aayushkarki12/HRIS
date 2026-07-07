@@ -18,6 +18,7 @@ from ...core.security import (
 )
 from ...core.dependencies import get_current_active_user, get_current_tenant
 from ...core.limiter import limiter
+from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.employee import Employee
 from ...models.tenant import Tenant
@@ -155,30 +156,33 @@ def login(
     user = db.query(User).filter(
         (User.username == form_data.username) | (User.email == form_data.username)
     ).first()
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not verify_password(form_data.password, user.hashed_password):
+        record_audit_log(db, user.tenant_id, user.id, "login_failed", "auth", user.id,
+                          "Incorrect password", request=request, severity="warning")
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User account is deactivated"
         )
-    
+
     # Get tenant info
     tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
-    
+
     # Create access token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -187,6 +191,7 @@ def login(
     )
 
     refresh_token = _issue_refresh_token(db, user, tenant.id)
+    record_audit_log(db, tenant.id, user.id, "login", "auth", user.id, request=request)
     db.commit()
 
     # Return response with tenant as dict
@@ -271,6 +276,7 @@ def refresh_access_token(
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
+    request: Request,
     data: RefreshTokenRequest,
     db: Session = Depends(get_db)
 ):
@@ -283,6 +289,7 @@ def logout(
     db_token = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
     if db_token:
         db_token.revoked = True
+        record_audit_log(db, db_token.tenant_id, db_token.user_id, "logout", "auth", db_token.user_id, request=request)
         db.commit()
     return None
 

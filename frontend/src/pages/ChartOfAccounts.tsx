@@ -30,7 +30,7 @@ import {
   Delete as DeleteIcon,
   AccountBalance as AccountIcon,
 } from '@mui/icons-material';
-import { accountingService } from '../services/api';
+import { accountingService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AccessDenied from '../components/common/AccessDenied';
 
@@ -59,12 +59,18 @@ const ChartOfAccounts: React.FC = () => {
     name: '',
     account_type: '',
     parent_id: '',
+    ledger_group_id: '',
     description: '',
   });
 
   const { data: accounts, isLoading, refetch } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accountingService.getAccounts(),
+  });
+
+  const { data: ledgerGroups = [] } = useQuery({
+    queryKey: ['ledger-groups'],
+    queryFn: () => accountingService.getLedgerGroups(),
   });
 
   const createMutation = useMutation({
@@ -75,7 +81,7 @@ const ChartOfAccounts: React.FC = () => {
       handleCloseModal();
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to create account';
+      const errorMsg = getErrorMessage(error, 'Failed to create account');
       toast.error(errorMsg);
       setError(errorMsg);
     },
@@ -89,7 +95,7 @@ const ChartOfAccounts: React.FC = () => {
       handleCloseModal();
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to update account';
+      const errorMsg = getErrorMessage(error, 'Failed to update account');
       toast.error(errorMsg);
       setError(errorMsg);
     },
@@ -102,7 +108,7 @@ const ChartOfAccounts: React.FC = () => {
       toast.success('Account deactivated successfully');
     },
     onError: (error: any) => {
-      const errorMsg = error.response?.data?.detail || 'Failed to deactivate account';
+      const errorMsg = getErrorMessage(error, 'Failed to deactivate account');
       toast.error(errorMsg);
     },
   });
@@ -110,7 +116,7 @@ const ChartOfAccounts: React.FC = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingAccount(null);
-    setFormData({ code: '', name: '', account_type: '', parent_id: '', description: '' });
+    setFormData({ code: '', name: '', account_type: '', parent_id: '', ledger_group_id: '', description: '' });
     setError('');
   };
 
@@ -121,6 +127,7 @@ const ChartOfAccounts: React.FC = () => {
       name: account.name,
       account_type: account.account_type,
       parent_id: account.parent_id || '',
+      ledger_group_id: account.ledger_group_id || '',
       description: account.description || '',
     });
     setIsModalOpen(true);
@@ -134,6 +141,7 @@ const ChartOfAccounts: React.FC = () => {
       account_type: formData.account_type,
       description: formData.description || null,
       parent_id: formData.parent_id ? Number(formData.parent_id) : null,
+      ledger_group_id: formData.ledger_group_id ? Number(formData.ledger_group_id) : null,
     };
 
     if (editingAccount) {
@@ -260,6 +268,7 @@ const ChartOfAccounts: React.FC = () => {
               <TableCell><strong>Name</strong></TableCell>
               <TableCell><strong>Type</strong></TableCell>
               <TableCell><strong>Parent</strong></TableCell>
+              <TableCell><strong>Ledger Group</strong></TableCell>
               <TableCell><strong>Status</strong></TableCell>
               {isAdmin && <TableCell align="right"><strong>Actions</strong></TableCell>}
             </TableRow>
@@ -267,7 +276,7 @@ const ChartOfAccounts: React.FC = () => {
           <TableBody>
             {filteredAccounts?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 6 : 5} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={isAdmin ? 7 : 6} align="center" sx={{ py: 4 }}>
                   <AccountIcon sx={{ fontSize: 48, color: '#ccc', mb: 1 }} />
                   <Typography color="textSecondary">No accounts found</Typography>
                 </TableCell>
@@ -297,6 +306,12 @@ const ChartOfAccounts: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       {parentAccount ? `${parentAccount.code} - ${parentAccount.name}` : '-'}
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const group = ledgerGroups.find((g: any) => g.id === account.ledger_group_id);
+                        return group ? `${group.code} - ${group.name}` : '-';
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Chip
@@ -389,6 +404,23 @@ const ChartOfAccounts: React.FC = () => {
                   {account.code} - {account.name}
                 </MenuItem>
               ))}
+          </TextField>
+          <TextField
+            fullWidth
+            select
+            label="Ledger Group (Optional)"
+            name="ledger_group_id"
+            value={formData.ledger_group_id}
+            onChange={handleFormChange}
+            margin="normal"
+            size="small"
+          >
+            <MenuItem value="">No Group</MenuItem>
+            {ledgerGroups.map((g: any) => (
+              <MenuItem key={g.id} value={g.id}>
+                {g.code} - {g.name}
+              </MenuItem>
+            ))}
           </TextField>
           <TextField
             fullWidth

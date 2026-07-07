@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -6,35 +6,43 @@ import { z } from 'zod';
 import toast from 'react-hot-toast';
 import {
   Box,
-  Paper,
   Typography,
   TextField,
   Button,
-  Grid,
-  Card,
-  CardContent,
   Divider,
   CircularProgress,
   Alert,
   MenuItem,
+  Avatar,
+  IconButton,
+  Tooltip,
+  Skeleton,
 } from '@mui/material';
 import {
   Save as SaveIcon,
   Edit as EditIcon,
   Cancel as CancelIcon,
   Lock as LockIcon,
+  CameraAlt as CameraIcon,
+  Person as PersonIcon,
+  Work as WorkIcon,
+  ContactPhone as EmergencyIcon,
+  AccountBalance as BankIcon,
 } from '@mui/icons-material';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { employeeService, userService } from '../services/api';
+import { employeeService, userService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
+const API_BASE = 'http://localhost:8000';
+
 const profileSchema = z.object({
-  first_name: z.string().min(2, 'First name is required'),
-  last_name: z.string().min(2, 'Last name is required'),
-  email: z.string().email('Invalid email address'),
+  first_name: z.string().min(2, 'Required'),
+  last_name: z.string().min(2, 'Required'),
+  email: z.string().email('Invalid email'),
   phone: z.string().optional().nullable(),
-  department: z.string().min(2, 'Department is required'),
-  position: z.string().min(2, 'Position is required'),
+  department: z.string().min(1, 'Required'),
+  position: z.string().min(1, 'Required'),
   date_of_birth: z.string().optional().nullable(),
   gender: z.string().optional().nullable(),
   marital_status: z.string().optional().nullable(),
@@ -49,723 +57,322 @@ const profileSchema = z.object({
   skills: z.string().optional().nullable(),
   certifications: z.string().optional().nullable(),
 });
-
-type ProfileFormData = z.infer<typeof profileSchema>;
+type ProfileForm = z.infer<typeof profileSchema>;
 
 const passwordSchema = z.object({
-  old_password: z.string().min(1, 'Current password is required'),
-  new_password: z.string().min(8, 'New password must be at least 8 characters'),
-  confirm_password: z.string().min(1, 'Please confirm your new password'),
-}).refine((data) => data.new_password === data.confirm_password, {
-  message: "Passwords don't match",
-  path: ['confirm_password'],
-});
+  old_password: z.string().min(1, 'Required'),
+  new_password: z.string().min(8, 'Min 8 characters'),
+  confirm_password: z.string().min(1, 'Required'),
+}).refine(d => d.new_password === d.confirm_password, { message: "Passwords don't match", path: ['confirm_password'] });
+type PwdForm = z.infer<typeof passwordSchema>;
 
-type PasswordFormData = z.infer<typeof passwordSchema>;
+const fadeUp = {
+  hidden: { opacity: 0, y: 10 },
+  visible: (i: number) => ({ opacity: 1, y: 0, transition: { duration: 0.2, delay: i * 0.05 } }),
+};
+
+const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode; index?: number }> = ({ title, icon, children, index = 0 }) => (
+  <motion.div custom={index} variants={fadeUp} initial="hidden" animate="visible">
+    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '12px', overflow: 'hidden', bgcolor: '#fff' }}>
+      <Box sx={{ px: 3, py: 2, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#FAFAFA' }}>
+        <Box sx={{ color: 'primary.main', display: 'flex' }}>{icon}</Box>
+        <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem', letterSpacing: '0.01em' }}>{title}</Typography>
+      </Box>
+      <Box sx={{ p: 3 }}>{children}</Box>
+    </Box>
+  </motion.div>
+);
+
+const FieldGrid: React.FC<{ children: React.ReactNode; cols?: number }> = ({ children, cols = 2 }) => (
+  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: `repeat(${cols}, 1fr)` }, gap: 2 }}>
+    {children}
+  </Box>
+);
 
 const Profile: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [error, setError] = useState<string>('');
-  const [success, setSuccess] = useState<string>('');
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [passwordError, setPasswordError] = useState<string>('');
+  const [pwdError, setPwdError] = useState('');
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Fetch profile data
-  const { data: profile, isLoading, refetch } = useQuery({
-    queryKey: ['profile'],
-    queryFn: async () => {
-      try {
-        const data = await employeeService.getMyProfile();
-        console.log('Profile data fetched:', data);
-        return data;
-      } catch (err) {
-        console.error('Error fetching profile:', err);
-        throw err;
-      }
-    },
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: employeeService.getMyProfile,
+    enabled: !!user?.id,
     retry: 1,
   });
 
-  // Initialize form
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<ProfileFormData>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      first_name: '',
-      last_name: '',
-      email: '',
-      phone: '',
-      department: '',
-      position: '',
-      date_of_birth: '',
-      gender: '',
-      marital_status: '',
-      address: '',
-      emergency_contact_name: '',
-      emergency_contact_phone: '',
-      emergency_contact_relation: '',
-      bank_name: '',
-      bank_account: '',
-      bank_routing: '',
-      social_security: '',
-      skills: '',
-      certifications: '',
+      first_name: '', last_name: '', email: '', phone: '', department: '', position: '',
+      date_of_birth: '', gender: '', marital_status: '', address: '',
+      emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relation: '',
+      bank_name: '', bank_account: '', bank_routing: '', social_security: '',
+      skills: '', certifications: '',
     },
   });
 
-  // Change password form
-  const {
-    register: registerPassword,
-    handleSubmit: handlePasswordSubmit,
-    reset: resetPasswordForm,
-    formState: { errors: passwordErrors, isSubmitting: isChangingPassword },
-  } = useForm<PasswordFormData>({
+  const { register: regPwd, handleSubmit: handlePwdSubmit, reset: resetPwd, formState: { errors: pwdErrors, isSubmitting: pwdSubmitting } } = useForm<PwdForm>({
     resolver: zodResolver(passwordSchema),
-    defaultValues: { old_password: '', new_password: '', confirm_password: '' },
   });
 
-  const changePasswordMutation = useMutation({
-    mutationFn: (data: PasswordFormData) => {
-      if (!user) throw new Error('Not logged in');
-      return userService.changePassword(user.id, data.old_password, data.new_password);
-    },
-    onSuccess: async () => {
-      toast.success('Password changed. Please log in again with your new password.');
-      resetPasswordForm();
-      await logout();
-      navigate('/login');
-    },
-    onError: (error: any) => {
-      const detail = error.response?.data?.detail;
-      let msg = 'Failed to change password';
-      if (typeof detail === 'string') {
-        msg = detail;
-      } else if (Array.isArray(detail)) {
-        msg = detail.map((d: any) => d.msg || 'Invalid value').join(', ');
-      }
-      setPasswordError(msg);
-      toast.error(msg);
-    },
-  });
-
-  const onPasswordSubmit = (data: PasswordFormData) => {
-    setPasswordError('');
-    changePasswordMutation.mutate(data);
-  };
-
-  // Update form when profile data loads
   useEffect(() => {
     if (profile) {
-      console.log('Setting form values from profile:', profile);
       reset({
-        first_name: profile.first_name || '',
-        last_name: profile.last_name || '',
-        email: profile.email || '',
-        phone: profile.phone || '',
-        department: profile.department || '',
-        position: profile.position || '',
-        date_of_birth: profile.date_of_birth || '',
-        gender: profile.gender || '',
-        marital_status: profile.marital_status || '',
-        address: profile.address || '',
+        first_name: profile.first_name || '', last_name: profile.last_name || '',
+        email: profile.email || '', phone: profile.phone || '',
+        department: profile.department || '', position: profile.position || '',
+        date_of_birth: profile.date_of_birth || '', gender: profile.gender || '',
+        marital_status: profile.marital_status || '', address: profile.address || '',
         emergency_contact_name: profile.emergency_contact_name || '',
         emergency_contact_phone: profile.emergency_contact_phone || '',
         emergency_contact_relation: profile.emergency_contact_relation || '',
-        bank_name: profile.bank_name || '',
-        bank_account: profile.bank_account || '',
-        bank_routing: profile.bank_routing || '',
-        social_security: profile.social_security || '',
-        skills: profile.skills || '',
-        certifications: profile.certifications || '',
+        bank_name: profile.bank_name || '', bank_account: profile.bank_account || '',
+        bank_routing: profile.bank_routing || '', social_security: profile.social_security || '',
+        skills: profile.skills || '', certifications: profile.certifications || '',
       });
     }
   }, [profile, reset]);
 
-  // Update profile mutation
-  const updateProfileMutation = useMutation({
-    mutationFn: async (data: ProfileFormData) => {
-      console.log('Updating profile with data:', data);
-      
-      // Clean the data before sending
-      const cleanedData: any = {};
-      
-      Object.keys(data).forEach(key => {
-        const value = data[key as keyof ProfileFormData];
-        // Convert empty strings to null, keep other values as is
-        if (value === '') {
-          cleanedData[key] = null;
-        } else {
-          cleanedData[key] = value;
-        }
-      });
-      
-      console.log('Cleaned data being sent:', cleanedData);
-      const response = await employeeService.updateMyProfile(cleanedData);
-      console.log('Update response:', response);
-      return response;
+  const updateMutation = useMutation({
+    mutationFn: (data: ProfileForm) => {
+      const cleaned: any = {};
+      Object.keys(data).forEach(k => { cleaned[k] = (data as any)[k] === '' ? null : (data as any)[k]; });
+      return employeeService.updateMyProfile(cleaned);
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
-      toast.success('Profile updated successfully!');
-      setSuccess('Profile updated successfully!');
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
+      toast.success('Profile updated');
       setIsEditing(false);
-      setError('');
-      setValidationErrors([]);
     },
-    onError: (error: any) => {
-      console.error('Update error full:', error);
-      console.error('Error response data:', error.response?.data);
-      console.error('Error response status:', error.response?.status);
-      
-      // Handle validation errors properly
-      let errorMessage = 'Failed to update profile';
-      let errors: string[] = [];
-      
-      if (error.response?.data?.detail) {
-        // FastAPI validation error format
-        if (typeof error.response.data.detail === 'string') {
-          errorMessage = error.response.data.detail;
-        } else if (Array.isArray(error.response.data.detail)) {
-          errors = error.response.data.detail.map((err: any) => {
-            const field = err.loc?.join('.') || 'field';
-            const msg = err.msg || 'Invalid value';
-            return `${field}: ${msg}`;
-          });
-          errorMessage = errors.join(', ');
-        } else if (typeof error.response.data.detail === 'object') {
-          // If detail is an object with validation errors
-          const detail = error.response.data.detail;
-          if (detail.errors) {
-            errors = Object.entries(detail.errors).map(([key, value]) => 
-              `${key}: ${Array.isArray(value) ? value.join(', ') : value}`
-            );
-            errorMessage = errors.join(', ');
-          } else {
-            errorMessage = JSON.stringify(detail);
-          }
-        }
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      setValidationErrors(errors);
-      setError(errorMessage);
-      toast.error(errorMessage);
+    onError: (err: any) => {
+      toast.error(getErrorMessage(err, 'Failed to update profile'));
     },
   });
 
-  const onSubmit = (data: ProfileFormData) => {
-    setError('');
-    setSuccess('');
-    setValidationErrors([]);
-    updateProfileMutation.mutate(data);
+  const avatarMutation = useMutation({
+    mutationFn: (file: File) => employeeService.uploadAvatar(file),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
+      toast.success('Profile photo updated');
+      setAvatarPreview(null);
+    },
+    onError: (err: any) => {
+      toast.error(getErrorMessage(err, 'Failed to upload photo'));
+      setAvatarPreview(null);
+    },
+  });
+
+  const pwdMutation = useMutation({
+    mutationFn: (data: PwdForm) => {
+      if (!user) throw new Error('Not logged in');
+      return userService.changePassword(user.id, data.old_password, data.new_password);
+    },
+    onSuccess: async () => {
+      toast.success('Password changed. Please log in again.');
+      resetPwd();
+      await logout();
+      navigate('/login');
+    },
+    onError: (err: any) => {
+      const msg = getErrorMessage(err, 'Failed to change password');
+      setPwdError(msg);
+      toast.error(msg);
+    },
+  });
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const preview = URL.createObjectURL(file);
+    setAvatarPreview(preview);
+    avatarMutation.mutate(file);
   };
 
   const handleCancel = () => {
     setIsEditing(false);
-    setError('');
-    setSuccess('');
-    setValidationErrors([]);
-    if (profile) {
-      reset({
-        first_name: profile.first_name || '',
-        last_name: profile.last_name || '',
-        email: profile.email || '',
-        phone: profile.phone || '',
-        department: profile.department || '',
-        position: profile.position || '',
-        date_of_birth: profile.date_of_birth || '',
-        gender: profile.gender || '',
-        marital_status: profile.marital_status || '',
-        address: profile.address || '',
-        emergency_contact_name: profile.emergency_contact_name || '',
-        emergency_contact_phone: profile.emergency_contact_phone || '',
-        emergency_contact_relation: profile.emergency_contact_relation || '',
-        bank_name: profile.bank_name || '',
-        bank_account: profile.bank_account || '',
-        bank_routing: profile.bank_routing || '',
-        social_security: profile.social_security || '',
-        skills: profile.skills || '',
-        certifications: profile.certifications || '',
-      });
-    }
+    if (profile) reset({
+      first_name: profile.first_name || '', last_name: profile.last_name || '',
+      email: profile.email || '', phone: profile.phone || '',
+      department: profile.department || '', position: profile.position || '',
+      date_of_birth: profile.date_of_birth || '', gender: profile.gender || '',
+      marital_status: profile.marital_status || '', address: profile.address || '',
+      emergency_contact_name: profile.emergency_contact_name || '',
+      emergency_contact_phone: profile.emergency_contact_phone || '',
+      emergency_contact_relation: profile.emergency_contact_relation || '',
+      bank_name: profile.bank_name || '', bank_account: profile.bank_account || '',
+      bank_routing: profile.bank_routing || '', social_security: profile.social_security || '',
+      skills: profile.skills || '', certifications: profile.certifications || '',
+    });
   };
 
-  if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
+  const avatarSrc = avatarPreview || (profile?.profile_picture ? `${API_BASE}${profile.profile_picture}` : undefined);
+  const displayName = profile ? `${profile.first_name} ${profile.last_name}` : user?.username || '';
+  const initials = displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#2c3e50' }}>
-            My Profile
-          </Typography>
-          <Typography variant="body2" color="textSecondary">
-            View and manage your personal information
+    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+      {/* Header */}
+      <motion.div variants={fadeUp} custom={0} initial="hidden" animate="visible">
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>My Profile</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Manage your personal information and account settings</Typography>
+          </Box>
+          {!isEditing ? (
+            <Button variant="outlined" startIcon={<EditIcon sx={{ fontSize: 15 }} />} onClick={() => setIsEditing(true)} size="small" sx={{ fontWeight: 600 }}>
+              Edit Profile
+            </Button>
+          ) : (
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="outlined" startIcon={<CancelIcon sx={{ fontSize: 15 }} />} onClick={handleCancel} size="small">Cancel</Button>
+              <Button variant="contained" startIcon={<SaveIcon sx={{ fontSize: 15 }} />} onClick={handleSubmit(d => updateMutation.mutate(d))} size="small" disabled={isSubmitting || updateMutation.isPending} sx={{ fontWeight: 600 }}>
+                {updateMutation.isPending ? <CircularProgress size={14} color="inherit" /> : 'Save Changes'}
+              </Button>
+            </Box>
+          )}
+        </Box>
+      </motion.div>
+
+      {/* Avatar card */}
+      <motion.div variants={fadeUp} custom={1} initial="hidden" animate="visible">
+        <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '12px', p: 3, mb: 2.5, bgcolor: '#fff', display: 'flex', alignItems: 'center', gap: 3 }}>
+          <Box sx={{ position: 'relative', flexShrink: 0 }}>
+            {isLoading ? (
+              <Skeleton variant="circular" width={80} height={80} />
+            ) : (
+              <Avatar src={avatarSrc} sx={{ width: 80, height: 80, fontSize: '1.5rem', fontWeight: 700, bgcolor: 'primary.main' }}>
+                {!avatarSrc && initials}
+              </Avatar>
+            )}
+            <Tooltip title="Upload photo">
+              <IconButton
+                size="small"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={avatarMutation.isPending}
+                sx={{
+                  position: 'absolute', bottom: -4, right: -4,
+                  bgcolor: '#fff', border: '1px solid', borderColor: 'divider',
+                  width: 28, height: 28,
+                  '&:hover': { bgcolor: 'primary.main', color: '#fff', borderColor: 'primary.main' },
+                }}
+              >
+                {avatarMutation.isPending ? <CircularProgress size={12} /> : <CameraIcon sx={{ fontSize: 14 }} />}
+              </IconButton>
+            </Tooltip>
+            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            {isLoading ? (
+              <>
+                <Skeleton width={160} height={24} />
+                <Skeleton width={120} height={18} sx={{ mt: 0.5 }} />
+              </>
+            ) : (
+              <>
+                <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.01em' }}>{displayName}</Typography>
+                <Typography variant="body2" color="text.secondary">{profile?.position} · {profile?.department}</Typography>
+                <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.25 }}>Employee #{profile?.employee_id}</Typography>
+              </>
+            )}
+          </Box>
+          <Typography variant="caption" color="text.disabled" sx={{ alignSelf: 'flex-end', display: { xs: 'none', sm: 'block' } }}>
+            Click the camera icon to change your photo
           </Typography>
         </Box>
-        {!isEditing && (
-          <Button
-            variant="contained"
-            startIcon={<EditIcon />}
-            onClick={() => setIsEditing(true)}
-            sx={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                transform: 'translateY(-2px)',
-                boxShadow: '0 8px 25px rgba(102, 126, 234, 0.4)',
-              },
-            }}
-          >
-            Edit Profile
-          </Button>
-        )}
-      </Box>
+      </motion.div>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
-      
-      {validationErrors.length > 0 && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setValidationErrors([])}>
-          <ul style={{ margin: 0, paddingLeft: 20 }}>
-            {validationErrors.map((err, index) => (
-              <li key={index}>{err}</li>
-            ))}
-          </ul>
-        </Alert>
-      )}
-      
-      {success && (
-        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccess('')}>
-          {success}
-        </Alert>
-      )}
-
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <Grid container spacing={3}>
-          {/* Personal Information */}
-          <Grid item xs={12} md={8}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-              <CardContent sx={{ p: 4 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                  Personal Information
-                </Typography>
-                <Divider sx={{ mb: 3 }} />
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="First Name"
-                      {...register('first_name')}
-                      error={!!errors.first_name}
-                      helperText={errors.first_name?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Last Name"
-                      {...register('last_name')}
-                      error={!!errors.last_name}
-                      helperText={errors.last_name?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Email"
-                      type="email"
-                      {...register('email')}
-                      error={!!errors.email}
-                      helperText={errors.email?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Phone"
-                      {...register('phone')}
-                      error={!!errors.phone}
-                      helperText={errors.phone?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Date of Birth"
-                      type="date"
-                      {...register('date_of_birth')}
-                      error={!!errors.date_of_birth}
-                      helperText={errors.date_of_birth?.message}
-                      disabled={!isEditing}
-                      size="small"
-                      slotProps={{ inputLabel: { shrink: true } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      select
-                      label="Gender"
-                      {...register('gender')}
-                      error={!!errors.gender}
-                      helperText={errors.gender?.message}
-                      disabled={!isEditing}
-                      size="small"
-                      value={watch('gender') || ''}
-                    >
-                      <MenuItem value="">Select</MenuItem>
-                      <MenuItem value="male">Male</MenuItem>
-                      <MenuItem value="female">Female</MenuItem>
-                      <MenuItem value="other">Other</MenuItem>
-                    </TextField>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      select
-                      label="Marital Status"
-                      {...register('marital_status')}
-                      error={!!errors.marital_status}
-                      helperText={errors.marital_status?.message}
-                      disabled={!isEditing}
-                      size="small"
-                      value={watch('marital_status') || ''}
-                    >
-                      <MenuItem value="">Select</MenuItem>
-                      <MenuItem value="single">Single</MenuItem>
-                      <MenuItem value="married">Married</MenuItem>
-                      <MenuItem value="divorced">Divorced</MenuItem>
-                      <MenuItem value="widowed">Widowed</MenuItem>
-                    </TextField>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Address"
-                      multiline
-                      rows={2}
-                      {...register('address')}
-                      error={!!errors.address}
-                      helperText={errors.address?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Work Information */}
-          <Grid item xs={12} md={4}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-              <CardContent sx={{ p: 4 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                  Work Information
-                </Typography>
-                <Divider sx={{ mb: 3 }} />
-                <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Department"
-                      {...register('department')}
-                      error={!!errors.department}
-                      helperText={errors.department?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Position"
-                      {...register('position')}
-                      error={!!errors.position}
-                      helperText={errors.position?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Skills"
-                      {...register('skills')}
-                      error={!!errors.skills}
-                      helperText={errors.skills?.message}
-                      disabled={!isEditing}
-                      size="small"
-                      placeholder="Python, React, AWS, ..."
-                      multiline
-                      rows={2}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      label="Certifications"
-                      {...register('certifications')}
-                      error={!!errors.certifications}
-                      helperText={errors.certifications?.message}
-                      disabled={!isEditing}
-                      size="small"
-                      placeholder="AWS Certified, Scrum Master, ..."
-                      multiline
-                      rows={2}
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Emergency Contact */}
-          <Grid item xs={12}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-              <CardContent sx={{ p: 4 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                  Emergency Contact
-                </Typography>
-                <Divider sx={{ mb: 3 }} />
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      fullWidth
-                      label="Contact Name"
-                      {...register('emergency_contact_name')}
-                      error={!!errors.emergency_contact_name}
-                      helperText={errors.emergency_contact_name?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      fullWidth
-                      label="Phone"
-                      {...register('emergency_contact_phone')}
-                      error={!!errors.emergency_contact_phone}
-                      helperText={errors.emergency_contact_phone?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      fullWidth
-                      label="Relation"
-                      {...register('emergency_contact_relation')}
-                      error={!!errors.emergency_contact_relation}
-                      helperText={errors.emergency_contact_relation?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Banking Information */}
-          <Grid item xs={12}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-              <CardContent sx={{ p: 4 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                  Banking Information
-                </Typography>
-                <Divider sx={{ mb: 3 }} />
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Bank Name"
-                      {...register('bank_name')}
-                      error={!!errors.bank_name}
-                      helperText={errors.bank_name?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Account Number"
-                      {...register('bank_account')}
-                      error={!!errors.bank_account}
-                      helperText={errors.bank_account?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Routing Number"
-                      {...register('bank_routing')}
-                      error={!!errors.bank_routing}
-                      helperText={errors.bank_routing?.message}
-                      disabled={!isEditing}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Social Security / Tax ID"
-                      {...register('social_security')}
-                      error={!!errors.social_security}
-                      helperText={errors.social_security?.message}
-                      disabled={!isEditing}
-                      size="small"
-                      type="password"
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Actions */}
-          {isEditing && (
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<CancelIcon />}
-                  onClick={handleCancel}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={isSubmitting}
-                  startIcon={<SaveIcon />}
-                  sx={{
-                    px: 4,
-                    py: 1.5,
-                    borderRadius: 2,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    '&:hover': {
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      transform: 'translateY(-2px)',
-                      boxShadow: '0 8px 25px rgba(102, 126, 234, 0.4)',
-                    },
-                  }}
-                >
-                  {isSubmitting ? <CircularProgress size={24} /> : 'Save Changes'}
-                </Button>
+      <form onSubmit={handleSubmit(d => updateMutation.mutate(d))}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+          {/* Personal */}
+          <SectionCard title="Personal Information" icon={<PersonIcon sx={{ fontSize: 16 }} />} index={2}>
+            <FieldGrid>
+              <TextField size="small" label="First Name" {...register('first_name')} error={!!errors.first_name} helperText={errors.first_name?.message} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Last Name" {...register('last_name')} error={!!errors.last_name} helperText={errors.last_name?.message} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Email" type="email" {...register('email')} error={!!errors.email} helperText={errors.email?.message} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Phone" {...register('phone')} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Date of Birth" type="date" {...register('date_of_birth')} disabled={!isEditing} fullWidth slotProps={{ inputLabel: { shrink: true } }} />
+              <TextField size="small" select label="Gender" value={watch('gender') || ''} onChange={e => setValue('gender', e.target.value)} disabled={!isEditing} fullWidth>
+                <MenuItem value="">Select</MenuItem>
+                <MenuItem value="male">Male</MenuItem>
+                <MenuItem value="female">Female</MenuItem>
+                <MenuItem value="other">Other</MenuItem>
+              </TextField>
+              <TextField size="small" select label="Marital Status" value={watch('marital_status') || ''} onChange={e => setValue('marital_status', e.target.value)} disabled={!isEditing} fullWidth>
+                <MenuItem value="">Select</MenuItem>
+                <MenuItem value="single">Single</MenuItem>
+                <MenuItem value="married">Married</MenuItem>
+                <MenuItem value="divorced">Divorced</MenuItem>
+                <MenuItem value="widowed">Widowed</MenuItem>
+              </TextField>
+              <Box sx={{ gridColumn: { sm: '1 / -1' } }}>
+                <TextField size="small" label="Address" multiline rows={2} {...register('address')} disabled={!isEditing} fullWidth />
               </Box>
-            </Grid>
-          )}
-        </Grid>
+            </FieldGrid>
+          </SectionCard>
+
+          {/* Work */}
+          <SectionCard title="Work Information" icon={<WorkIcon sx={{ fontSize: 16 }} />} index={3}>
+            <FieldGrid>
+              <TextField size="small" label="Department" {...register('department')} error={!!errors.department} helperText={errors.department?.message} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Job Title / Position" {...register('position')} error={!!errors.position} helperText={errors.position?.message} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Skills" multiline rows={2} placeholder="Python, React, AWS…" {...register('skills')} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Certifications" multiline rows={2} placeholder="AWS Certified, PMP…" {...register('certifications')} disabled={!isEditing} fullWidth />
+            </FieldGrid>
+          </SectionCard>
+
+          {/* Emergency */}
+          <SectionCard title="Emergency Contact" icon={<EmergencyIcon sx={{ fontSize: 16 }} />} index={4}>
+            <FieldGrid cols={3}>
+              <TextField size="small" label="Contact Name" {...register('emergency_contact_name')} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Phone" {...register('emergency_contact_phone')} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Relation" {...register('emergency_contact_relation')} disabled={!isEditing} fullWidth />
+            </FieldGrid>
+          </SectionCard>
+
+          {/* Banking */}
+          <SectionCard title="Banking Information" icon={<BankIcon sx={{ fontSize: 16 }} />} index={5}>
+            <FieldGrid>
+              <TextField size="small" label="Bank Name" {...register('bank_name')} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Account Number" {...register('bank_account')} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Routing Number" {...register('bank_routing')} disabled={!isEditing} fullWidth />
+              <TextField size="small" label="Tax ID / SSN" type="password" {...register('social_security')} disabled={!isEditing} fullWidth />
+            </FieldGrid>
+          </SectionCard>
+        </Box>
       </form>
 
       {/* Change Password */}
-      <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', mt: 3 }}>
-        <CardContent sx={{ p: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <LockIcon color="action" />
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Change Password
-            </Typography>
+      <motion.div variants={fadeUp} custom={6} initial="hidden" animate="visible">
+        <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '12px', overflow: 'hidden', bgcolor: '#fff', mt: 2.5 }}>
+          <Box sx={{ px: 3, py: 2, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#FAFAFA' }}>
+            <Box sx={{ color: 'text.secondary', display: 'flex' }}><LockIcon sx={{ fontSize: 16 }} /></Box>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem' }}>Change Password</Typography>
           </Box>
-          <Divider sx={{ mb: 3 }} />
-
-          {passwordError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPasswordError('')}>
-              {passwordError}
+          <Box sx={{ p: 3 }}>
+            <Alert severity="info" sx={{ mb: 2.5, fontSize: '0.8125rem' }}>
+              Changing your password will sign you out of all devices.
             </Alert>
-          )}
-
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Changing your password will log you out of all devices, including this one. You'll need to log back in with your new password.
-          </Alert>
-
-          <form onSubmit={handlePasswordSubmit(onPasswordSubmit)}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  label="Current Password"
-                  type="password"
-                  {...registerPassword('old_password')}
-                  error={!!passwordErrors.old_password}
-                  helperText={passwordErrors.old_password?.message}
-                  size="small"
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  label="New Password"
-                  type="password"
-                  {...registerPassword('new_password')}
-                  error={!!passwordErrors.new_password}
-                  helperText={passwordErrors.new_password?.message || 'At least 8 characters, with uppercase, lowercase, and a number'}
-                  size="small"
-                />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  label="Confirm New Password"
-                  type="password"
-                  {...registerPassword('confirm_password')}
-                  error={!!passwordErrors.confirm_password}
-                  helperText={passwordErrors.confirm_password?.message}
-                  size="small"
-                />
-              </Grid>
-            </Grid>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={isChangingPassword}
-                startIcon={<LockIcon />}
-                sx={{
-                  px: 4,
-                  py: 1.5,
-                  borderRadius: 2,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  '&:hover': {
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    transform: 'translateY(-2px)',
-                    boxShadow: '0 8px 25px rgba(102, 126, 234, 0.4)',
-                  },
-                }}
-              >
-                {isChangingPassword ? <CircularProgress size={24} /> : 'Change Password'}
-              </Button>
-            </Box>
-          </form>
-        </CardContent>
-      </Card>
+            {pwdError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPwdError('')}>{pwdError}</Alert>}
+            <form onSubmit={handlePwdSubmit(d => { setPwdError(''); pwdMutation.mutate(d); })}>
+              <FieldGrid cols={3}>
+                <TextField size="small" label="Current Password" type="password" {...regPwd('old_password')} error={!!pwdErrors.old_password} helperText={pwdErrors.old_password?.message} fullWidth />
+                <TextField size="small" label="New Password" type="password" {...regPwd('new_password')} error={!!pwdErrors.new_password} helperText={pwdErrors.new_password?.message || 'Min 8 characters'} fullWidth />
+                <TextField size="small" label="Confirm Password" type="password" {...regPwd('confirm_password')} error={!!pwdErrors.confirm_password} helperText={pwdErrors.confirm_password?.message} fullWidth />
+              </FieldGrid>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                <Button type="submit" variant="contained" size="small" disabled={pwdSubmitting || pwdMutation.isPending} startIcon={<LockIcon sx={{ fontSize: 15 }} />} sx={{ fontWeight: 600 }}>
+                  {pwdMutation.isPending ? <CircularProgress size={14} color="inherit" /> : 'Change Password'}
+                </Button>
+              </Box>
+            </form>
+          </Box>
+        </Box>
+      </motion.div>
     </Box>
   );
 };

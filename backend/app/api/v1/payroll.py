@@ -11,6 +11,7 @@ from ...core.dependencies import (
     get_current_tenant, get_current_employee
 )
 from ...core.audit import record_audit_log
+from ...core.voucher_service import attach_voucher
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
@@ -440,6 +441,14 @@ def process_payroll_run(
         record_audit_log(db, tenant.id, current_user.id, "process", "payroll_run", run.id,
                           f"Processed payroll for {run.period_start} to {run.period_end} "
                           f"({len(run.payslips)} payslips, net {run.total_net:.2f})")
+
+        attach_voucher(
+            db, tenant, db_entry, "payment", current_user,
+            party_type="other", party_name=f"Payroll {run.period_start} - {run.period_end}",
+            payment_method="bank", bank_account_id=cash_account.id,
+            reference_number=f"PAYROLL-{run.id}",
+            source_type="payroll_run", source_id=run.id, status="posted",
+        )
 
         db.commit()
 

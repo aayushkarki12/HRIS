@@ -34,7 +34,8 @@ def get_my_documents(
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
     document_type: str = Query(..., description="Document type (passport, id, resume, contract, etc.)"),
-    description: Optional[str] = None,
+    document_name: Optional[str] = Query(None, description="Display name for the document"),
+    description: Optional[str] = Query(None),
     file: UploadFile = File(...),
     current_employee: Employee = Depends(get_current_employee),
     tenant: Tenant = Depends(get_current_tenant),
@@ -42,9 +43,18 @@ async def upload_document(
 ):
     """Upload a document for current employee."""
     # Validate file type
-    allowed_types = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    allowed_types = {
+        'application/pdf',
+        'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain',
+        'application/zip',
+    }
     if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="File type not allowed")
+        raise HTTPException(status_code=400, detail=f"File type '{file.content_type}' is not allowed. Accepted: PDF, images, Word, Excel, plain text, ZIP.")
 
     # Validate file size without reading the whole thing into memory first.
     # UploadFile wraps a SpooledTemporaryFile, so we can seek to check size.
@@ -74,7 +84,7 @@ async def upload_document(
     db_document = Document(
         employee_id=current_employee.id,
         document_type=document_type,
-        document_name=file.filename,
+        document_name=document_name or file.filename or "Untitled Document",
         file_url=file_path,
         file_size=len(content),
         file_type=file.content_type,

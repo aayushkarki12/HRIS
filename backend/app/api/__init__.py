@@ -17,6 +17,10 @@ from .v1 import (
     work_locations_router,
     audit_logs_router,
     notifications_router,
+    resource_requests_router,
+    voucher_router,
+    inventory_router,
+    budget_router,
 )
 
 __all__ = [
@@ -38,4 +42,8 @@ __all__ = [
     "work_locations_router",
     "audit_logs_router",
     "notifications_router",
+    "resource_requests_router",
+    "voucher_router",
+    "inventory_router",
+    "budget_router",
 ]
