@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 
 from ...core.database import get_db
@@ -7,7 +7,12 @@ from ...core.dependencies import get_current_active_user, get_current_admin_user
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.project import Project
-from ...schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
+from ...models.employee import Employee
+from ...models.project_member import ProjectMember
+from ...schemas.project import (
+    ProjectCreate, ProjectUpdate, ProjectResponse,
+    ProjectMemberCreate, ProjectMemberResponse,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -115,7 +120,107 @@ def delete_project(
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     db.delete(project)
     db.commit()
     return {"message": "Project deleted successfully"}
+
+
+@router.get("/{project_id}/members", response_model=List[ProjectMemberResponse])
+def get_project_members(
+    project_id: int,
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all team members for a project.
+    """
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.tenant_id == tenant.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return db.query(ProjectMember).options(
+        joinedload(ProjectMember.employee)
+    ).filter(
+        ProjectMember.project_id == project_id,
+        ProjectMember.tenant_id == tenant.id
+    ).all()
+
+
+@router.post("/{project_id}/members", response_model=ProjectMemberResponse, status_code=status.HTTP_201_CREATED)
+def add_project_member(
+    project_id: int,
+    member_data: ProjectMemberCreate,
+    current_user: User = Depends(get_current_admin_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Add an employee to a project's team (admin only). An employee can belong
+    to multiple projects at once - membership here is independent of any
+    resource assignment.
+    """
+    project = db.query(Project).filter(
+        Project.id == project_id,
+        Project.tenant_id == tenant.id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    employee = db.query(Employee).filter(
+        Employee.id == member_data.employee_id,
+        Employee.tenant_id == tenant.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    existing = db.query(ProjectMember).filter(
+        ProjectMember.project_id == project_id,
+        ProjectMember.employee_id == member_data.employee_id,
+        ProjectMember.tenant_id == tenant.id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Employee is already a member of this project")
+
+    member = ProjectMember(
+        project_id=project_id,
+        employee_id=member_data.employee_id,
+        role=member_data.role,
+        tenant_id=tenant.id
+    )
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+
+    member = db.query(ProjectMember).options(
+        joinedload(ProjectMember.employee)
+    ).filter(ProjectMember.id == member.id).first()
+    return member
+
+
+@router.delete("/{project_id}/members/{employee_id}")
+def remove_project_member(
+    project_id: int,
+    employee_id: int,
+    current_user: User = Depends(get_current_admin_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Remove an employee from a project's team (admin only).
+    """
+    member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == project_id,
+        ProjectMember.employee_id == employee_id,
+        ProjectMember.tenant_id == tenant.id
+    ).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="This employee is not a member of the project")
+
+    db.delete(member)
+    db.commit()
+    return {"message": "Employee removed from project"}

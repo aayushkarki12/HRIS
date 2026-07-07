@@ -11,6 +11,7 @@ from ...core.dependencies import (
 )
 from ...core.audit import record_audit_log
 from ...core.notifications import notify_user
+from ...core.voucher_service import attach_voucher
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
@@ -378,6 +379,16 @@ def pay_expense_claim(
 
         record_audit_log(db, tenant.id, current_user.id, "pay", "expense_claim", claim.id,
                           f"Paid {claim.claim_number} ({claim.total_amount})")
+
+        claim_employee_for_voucher = db.query(Employee).filter(Employee.id == claim.employee_id).first()
+        attach_voucher(
+            db, tenant, db_entry, "payment", current_user,
+            party_type="employee",
+            party_name=f"{claim_employee_for_voucher.first_name} {claim_employee_for_voucher.last_name}" if claim_employee_for_voucher else None,
+            payment_method="bank", bank_account_id=cash_account.id,
+            reference_number=claim.claim_number,
+            source_type="expense_claim", source_id=claim.id, status="posted",
+        )
 
         claim_employee = db.query(Employee).filter(Employee.id == claim.employee_id).first()
         if claim_employee and claim_employee.user_id:

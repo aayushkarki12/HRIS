@@ -7,6 +7,7 @@ from datetime import datetime, date
 from ...core.database import get_db
 from ...core.dependencies import get_current_admin_user, get_current_manager_user, get_current_tenant
 from ...core.audit import record_audit_log
+from ...core.voucher_service import attach_voucher
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.project import Project
@@ -237,6 +238,13 @@ def send_invoice(
             ))
             invoice.journal_entry_id = db_entry.id
 
+            attach_voucher(
+                db, tenant, db_entry, "sales", current_user,
+                party_type="customer", party_name=invoice.customer_name,
+                reference_number=invoice.invoice_number, due_date=invoice.due_date,
+                source_type="invoice", source_id=invoice.id, status="posted",
+            )
+
         invoice.status = "sent"
         record_audit_log(db, tenant.id, current_user.id, "send", "invoice", invoice.id,
                           f"Sent {invoice.invoice_number} to {invoice.customer_name} ({invoice.total_amount})")
@@ -325,6 +333,14 @@ def record_payment(
                 tenant_id=tenant.id,
             ))
             db_payment.journal_entry_id = db_entry.id
+
+            attach_voucher(
+                db, tenant, db_entry, "receipt", current_user,
+                party_type="customer", party_name=invoice.customer_name,
+                payment_method=data.payment_method, bank_account_id=cash_account.id,
+                reference_number=data.reference or f"{invoice.invoice_number}-PMT",
+                source_type="invoice", source_id=invoice.id, status="posted",
+            )
 
         db.add(db_payment)
         invoice.amount_paid = round(invoice.amount_paid + data.amount, 2)

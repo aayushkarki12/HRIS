@@ -25,6 +25,7 @@ class Resource(Base):
     # Relationships - use string references
     tenant = relationship("Tenant", back_populates="resources")
     assignments = relationship("Assignment", back_populates="resource")
+    requests = relationship("ResourceRequest", back_populates="resource")
     
     def __repr__(self):
         return f"<Resource {self.asset_tag} - {self.name}>"

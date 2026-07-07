@@ -8,6 +8,7 @@ import pytz
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
 from ...core.location import get_location_status
+from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
@@ -117,6 +118,45 @@ def get_attendance_stats(
         logger.error(f"Error in get_attendance_stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/today-overview", response_model=dict)
+def get_today_attendance_overview(
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Tenant-wide snapshot of who's clocked in today (admin/manager only). Used
+    to power the "today's attendance" KPI on the admin dashboard.
+    """
+    if current_user.role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Not authorized to view tenant-wide attendance")
+
+    today = date.today()
+    total_active_employees = db.query(Employee).filter(
+        Employee.tenant_id == tenant.id,
+        Employee.is_active == True
+    ).count()
+
+    today_records = db.query(Attendance).filter(
+        Attendance.tenant_id == tenant.id,
+        Attendance.date == today
+    ).all()
+
+    status_counts = {"present": 0, "late": 0, "half-day": 0, "leave": 0, "holiday": 0}
+    for att in today_records:
+        if att.status in status_counts:
+            status_counts[att.status] += 1
+
+    checked_in = sum(1 for att in today_records if att.clock_in)
+    absent = max(total_active_employees - len(today_records), 0)
+
+    return {
+        "total_active_employees": total_active_employees,
+        "checked_in": checked_in,
+        "absent": absent,
+        "status_counts": status_counts,
+    }
+
 @router.post("/clock-in")
 def clock_in(
     latitude: Optional[float] = Query(None, description="Current latitude"),
@@ -170,6 +210,9 @@ def clock_in(
                 location_name=location_name
             )
             db.add(attendance)
+            db.flush()
+            record_audit_log(db, tenant.id, current_employee.user_id, "check_in", "attendance", attendance.id,
+                              f"{current_employee.first_name} {current_employee.last_name} checked in")
             db.commit()
             db.refresh(attendance)
             return {
@@ -189,6 +232,8 @@ def clock_in(
             existing.work_location_id = work_location_id
             existing.location_name = location_name
             existing.status = status
+            record_audit_log(db, tenant.id, current_employee.user_id, "check_in", "attendance", existing.id,
+                              f"{current_employee.first_name} {current_employee.last_name} checked in")
             db.commit()
             db.refresh(existing)
             return {

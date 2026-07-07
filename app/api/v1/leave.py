@@ -363,30 +363,40 @@ def calculate_leave_balances(
     
     for employee in employees:
         for leave_type in leave_types:
+            # Sum days from approved leaves in this year for this employee+type
+            from sqlalchemy import extract
+            used_days_result = db.query(func.coalesce(func.sum(Leave.total_days), 0)).filter(
+                Leave.employee_id == employee.id,
+                Leave.leave_type_id == leave_type.id,
+                Leave.status == 'approved',
+                extract('year', Leave.start_date) == year
+            ).scalar()
+            used_days = float(used_days_result or 0)
+
             balance = db.query(LeaveBalance).filter(
                 LeaveBalance.employee_id == employee.id,
                 LeaveBalance.leave_type_id == leave_type.id,
                 LeaveBalance.year == year
             ).first()
-            
+
             if not balance:
                 balance = LeaveBalance(
                     employee_id=employee.id,
                     leave_type_id=leave_type.id,
                     year=year,
                     total_days=leave_type.days_per_year,
-                    used_days=0,
-                    remaining_days=leave_type.days_per_year,
+                    used_days=used_days,
+                    remaining_days=max(leave_type.days_per_year - used_days, 0),
                     carried_over=0
                 )
                 db.add(balance)
                 created_count += 1
             else:
-                # Update if needed
-                if balance.total_days != leave_type.days_per_year:
-                    balance.total_days = leave_type.days_per_year
-                    balance.remaining_days = balance.total_days - balance.used_days + balance.carried_over
-                    updated_count += 1
+                # Recalculate used_days from actual approved leaves and update total if type changed
+                balance.used_days = used_days
+                balance.total_days = leave_type.days_per_year
+                balance.remaining_days = max(balance.total_days - used_days + balance.carried_over, 0)
+                updated_count += 1
     
     db.commit()
     

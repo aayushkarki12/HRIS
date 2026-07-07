@@ -16,6 +16,10 @@ from .invoice import router as invoice_router
 from .work_location import router as work_locations_router
 from .audit_log import router as audit_logs_router
 from .notification import router as notifications_router
+from .resource_requests import router as resource_requests_router
+from .voucher import router as voucher_router
+from .inventory import router as inventory_router
+from .budget import router as budget_router
 
 __all__ = [
     "auth_router",
@@ -36,4 +40,8 @@ __all__ = [
     "work_locations_router",
     "audit_logs_router",
     "notifications_router",
+    "resource_requests_router",
+    "voucher_router",
+    "inventory_router",
+    "budget_router",
 ]

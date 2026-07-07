@@ -12,6 +12,7 @@ from ...models.employee import Employee
 from ...models.resource import Resource
 from ...models.project import Project
 from ...models.assignment import Assignment
+from ...models.assignment_project import AssignmentProject
 from ...schemas.assignment import AssignmentCreate, AssignmentUpdate, AssignmentResponse
 
 logger = logging.getLogger(__name__)
@@ -35,9 +36,10 @@ def get_assignments(
     query = db.query(Assignment).options(
         joinedload(Assignment.employee),
         joinedload(Assignment.resource),
-        joinedload(Assignment.project)
+        joinedload(Assignment.project),
+        joinedload(Assignment.projects)
     ).filter(Assignment.tenant_id == tenant.id)
-    
+
     # If not admin, only show user's own assignments
     if current_user.role not in ["admin", "manager"]:
         employee = db.query(Employee).filter(
@@ -91,9 +93,13 @@ def get_assignments(
                 "name": assignment.project.name,
                 "status": assignment.project.status,
                 "description": assignment.project.description
-            } if assignment.project else None
+            } if assignment.project else None,
+            "projects": [
+                {"id": p.id, "name": p.name, "status": p.status, "description": p.description}
+                for p in assignment.projects
+            ]
         })
-    
+
     return result
 
 @router.get("/{assignment_id}", response_model=AssignmentResponse)
@@ -109,15 +115,16 @@ def get_assignment(
     assignment = db.query(Assignment).options(
         joinedload(Assignment.employee),
         joinedload(Assignment.resource),
-        joinedload(Assignment.project)
+        joinedload(Assignment.project),
+        joinedload(Assignment.projects)
     ).filter(
         Assignment.id == assignment_id,
         Assignment.tenant_id == tenant.id
     ).first()
-    
+
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    
+
     if current_user.role not in ["admin", "manager"]:
         employee = db.query(Employee).filter(
             Employee.user_id == current_user.id,
@@ -128,7 +135,7 @@ def get_assignment(
                 status_code=403,
                 detail="Not authorized to view this assignment"
             )
-    
+
     return {
         "id": assignment.id,
         "employee_id": assignment.employee_id,
@@ -159,7 +166,11 @@ def get_assignment(
             "name": assignment.project.name,
             "status": assignment.project.status,
             "description": assignment.project.description
-        } if assignment.project else None
+        } if assignment.project else None,
+        "projects": [
+            {"id": p.id, "name": p.name, "status": p.status, "description": p.description}
+            for p in assignment.projects
+        ]
     }
 
 @router.post("/", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
@@ -194,45 +205,60 @@ def create_assignment(
                 status_code=400,
                 detail=f"Resource is not available (current status: {resource.status})"
             )
-        
-        # Check if project exists in this tenant
-        project = db.query(Project).filter(
-            Project.id == assignment_data.project_id,
+
+        # Support both the legacy single project_id and the newer project_ids list.
+        # project_ids (if given) is the full set of projects this assignment covers;
+        # the first one is stored as project_id for backward compatibility with
+        # code that only knows about a single project per assignment.
+        project_ids = assignment_data.project_ids or (
+            [assignment_data.project_id] if assignment_data.project_id else []
+        )
+        if not project_ids:
+            raise HTTPException(status_code=400, detail="At least one project is required")
+
+        projects = db.query(Project).filter(
+            Project.id.in_(project_ids),
             Project.tenant_id == tenant.id
-        ).first()
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        
+        ).all()
+        found_ids = {p.id for p in projects}
+        missing_ids = [pid for pid in project_ids if pid not in found_ids]
+        if missing_ids:
+            raise HTTPException(status_code=404, detail=f"Project(s) not found: {missing_ids}")
+
         # Create assignment
         db_assignment = Assignment(
             employee_id=assignment_data.employee_id,
             resource_id=assignment_data.resource_id,
-            project_id=assignment_data.project_id,
+            project_id=project_ids[0],
             assigned_date=assignment_data.assigned_date or date.today(),
             status="active",
             tenant_id=tenant.id
         )
-        
+
         db.add(db_assignment)
         db.flush()
-        
+
+        for project_id in project_ids:
+            db.add(AssignmentProject(assignment_id=db_assignment.id, project_id=project_id))
+
         # Update resource status
         resource.status = "assigned"
         resource.assigned_to = assignment_data.employee_id
-        
+
         db.commit()
         db.refresh(db_assignment)
-        
+
         # Reload with relationships
         db_assignment = db.query(Assignment).options(
             joinedload(Assignment.employee),
             joinedload(Assignment.resource),
-            joinedload(Assignment.project)
+            joinedload(Assignment.project),
+            joinedload(Assignment.projects)
         ).filter(
             Assignment.id == db_assignment.id,
             Assignment.tenant_id == tenant.id
         ).first()
-        
+
         return {
             "id": db_assignment.id,
             "employee_id": db_assignment.employee_id,
@@ -263,9 +289,13 @@ def create_assignment(
                 "name": db_assignment.project.name,
                 "status": db_assignment.project.status,
                 "description": db_assignment.project.description
-            } if db_assignment.project else None
+            } if db_assignment.project else None,
+            "projects": [
+                {"id": p.id, "name": p.name, "status": p.status, "description": p.description}
+                for p in db_assignment.projects
+            ]
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:

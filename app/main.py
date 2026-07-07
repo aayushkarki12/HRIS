@@ -1,5 +1,7 @@
+import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from .core.config import settings
@@ -27,6 +29,10 @@ from .api import (
     work_locations_router,
     audit_logs_router,
     notifications_router,
+    resource_requests_router,
+    voucher_router,
+    inventory_router,
+    budget_router,
 )
 
 app = FastAPI(
@@ -72,6 +78,15 @@ app.include_router(invoice_router, prefix="/api/v1")
 app.include_router(work_locations_router, prefix="/api/v1")
 app.include_router(audit_logs_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(resource_requests_router, prefix="/api/v1")
+app.include_router(voucher_router, prefix="/api/v1")
+app.include_router(inventory_router, prefix="/api/v1")
+app.include_router(budget_router, prefix="/api/v1")
+
+# Serve uploaded files (avatars, etc.)
+_uploads_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+os.makedirs(_uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_uploads_dir), name="uploads")
 
 @app.get("/")
 def root():

@@ -37,6 +37,48 @@ class ResourceResponse(ResourceBase):
     assigned_to: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
+    class Config:
+        from_attributes = True
+
+
+class ResourceRequestCreate(BaseModel):
+    resource_id: int
+    reason: Optional[str] = Field(None, max_length=500)
+
+
+class ResourceRequestDecide(BaseModel):
+    admin_notes: Optional[str] = Field(None, max_length=500)
+
+
+class EmployeeInfo(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    class Config:
+        from_attributes = True
+
+
+class ResourceInfo(BaseModel):
+    id: int
+    name: str
+    type: str
+    asset_tag: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+
+class ResourceRequestResponse(BaseModel):
+    id: int
+    resource_id: int
+    employee_id: int
+    status: str
+    reason: Optional[str] = None
+    admin_notes: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    resource: Optional[ResourceInfo] = None
+    employee: Optional[EmployeeInfo] = None
+
     class Config:
         from_attributes = True

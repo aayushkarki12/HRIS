@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_admin_user, get_current_active_user
+from ...core.audit import record_audit_log
 from ...models.user import User
 from ...schemas.user import UserResponse, UserUpdate, ChangePasswordRequest, AdminResetPasswordRequest
 from ...core.security import get_password_hash
@@ -74,6 +75,7 @@ def get_user(
 def update_user(
     user_id: int,
     user_data: UserUpdate,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -112,12 +114,20 @@ def update_user(
             detail="You cannot change your own role. Ask another admin to do it."
         )
 
+    role_changed = 'role' in update_data and update_data['role'] != user.role
+    old_role = user.role
+
     for key, value in update_data.items():
         setattr(user, key, value)
-    
+
+    if role_changed:
+        record_audit_log(db, user.tenant_id, current_user.id, "role_change", "user", user.id,
+                          f"Role changed for {user.username}: {old_role} -> {user.role}",
+                          request=request, severity="warning")
+
     db.commit()
     db.refresh(user)
-    
+
     return user
 
 
@@ -125,6 +135,7 @@ def update_user(
 def change_password(
     user_id: int,
     data: ChangePasswordRequest,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -168,6 +179,8 @@ def change_password(
         RefreshToken.user_id == user.id,
         RefreshToken.revoked == False
     ).update({"revoked": True})
+    record_audit_log(db, user.tenant_id, current_user.id, "password_change", "user", user.id,
+                      request=request, severity="warning")
     db.commit()
 
     return {"message": "Password changed successfully. All other sessions have been logged out."}
@@ -177,6 +190,7 @@ def change_password(
 def admin_reset_password(
     user_id: int,
     data: AdminResetPasswordRequest,
+    request: Request,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -200,6 +214,8 @@ def admin_reset_password(
         RefreshToken.user_id == user.id,
         RefreshToken.revoked == False
     ).update({"revoked": True})
+    record_audit_log(db, user.tenant_id, current_user.id, "password_reset", "user", user.id,
+                      f"Admin reset password for {user.username}", request=request, severity="warning")
     db.commit()
 
     return {"message": f"Password reset for {user.username}. All their active sessions have been logged out."}

@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
+from sqlalchemy import engine_from_config, inspect
 from sqlalchemy import pool
 
 from alembic import context
@@ -62,6 +62,42 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _check_metadata_is_complete(connection) -> None:
+    """
+    Guard against a repeat of a real incident: app/models/__init__.py silently lost
+    most of its imports, so Base.metadata only knew about 15 of the app's 39 tables.
+    `alembic revision --autogenerate` then read the "missing" 24 tables as "detected
+    removed table" and would have generated a migration dropping every one of them -
+    tables that in fact existed in the live database with real data. That migration
+    was caught by hand before being applied, but autogenerate should never be able to
+    produce a mass-drop migration just because an import got lost - so this runs
+    automatically before every autogenerate and refuses to proceed if it would.
+
+    Compares the live database's actual tables against everything registered on
+    Base.metadata (i.e. everything `import app.models` pulled in). Any DB table not
+    present in metadata means a model isn't wired into app/models/__init__.py -
+    autogenerate would misread that as "this table should be dropped".
+    """
+    inspector = inspect(connection)
+    db_tables = set(inspector.get_table_names()) - {"alembic_version"}
+    known_tables = set(target_metadata.tables.keys())
+    missing = db_tables - known_tables
+
+    if missing:
+        raise SystemExit(
+            "\nRefusing to autogenerate: the live database has tables that aren't "
+            "registered on Base.metadata, which means `import app.models` isn't "
+            "picking up every model (check app/models/__init__.py for a missing "
+            "import).\n\n"
+            f"Tables in the database but not in Base.metadata: {sorted(missing)}\n\n"
+            "Autogenerate would read every one of those as 'detected removed table' "
+            "and write a migration that drops them. Fix the import gap first, then "
+            "confirm with:\n"
+            "  python -c \"import app.models; from app.core.database import Base; "
+            "print(len(Base.metadata.tables))\"\n"
+        )
+
+
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
@@ -76,6 +112,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Only relevant when generating a migration by diffing against metadata -
+        # a plain `upgrade`/`downgrade` run doesn't compare against Base.metadata
+        # at all, so there's nothing for a missing import to corrupt there.
+        if getattr(config.cmd_opts, "autogenerate", False):
+            _check_metadata_is_complete(connection)
+
         context.configure(
             connection=connection, target_metadata=target_metadata
         )

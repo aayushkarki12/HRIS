@@ -30,7 +30,7 @@ class EmployeeBase(BaseModel):
 
 
 class EmployeeCreate(EmployeeBase):
-    user_id: int
+    user_id: Optional[int] = None
 
 
 class EmployeeUpdate(BaseModel):
@@ -61,7 +61,7 @@ class EmployeeUpdate(BaseModel):
 
 class EmployeeResponse(EmployeeBase):
     id: int
-    user_id: int
+    user_id: Optional[int] = None
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
