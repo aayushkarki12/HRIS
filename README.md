@@ -208,15 +208,13 @@ hris-system/
 
 ```bash
 cd backend
-python -m venv .venv
-./.venv/Scripts/activate        # Windows; use `source .venv/bin/activate` on macOS/Linux
-pip install -r requirements.txt
+uv sync
 
 # copy and fill in environment variables (see below)
 cp .env.example .env
 
-alembic upgrade head
-uvicorn app.main:app --reload --port 8010
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --port 8010
 ```
 
 API docs available at `http://localhost:8010/docs` once running.
