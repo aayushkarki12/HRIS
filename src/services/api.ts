@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
 import { LoginCredentials, AuthResponse } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8010/api/v1';
 
 /**
  * Extracts a human-readable string from an API error.
