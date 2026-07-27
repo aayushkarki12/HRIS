@@ -95,7 +95,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
   });
 
   const userInitials = `${user?.first_name?.[0] ?? ''}${user?.last_name?.[0] ?? ''}`.toUpperCase();
-  const avatarSrc = myProfile?.profile_picture ? `http://localhost:8000${myProfile.profile_picture}` : undefined;
+  const avatarSrc = myProfile?.profile_picture ? `http://localhost:8010${myProfile.profile_picture}` : undefined;
   const tenantName = tenant?.name ?? 'HRIS System';
 
   // ── Handlers ───────────────────────────────────────────────────────────────

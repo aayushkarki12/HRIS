@@ -141,7 +141,7 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
 
   const userInitials = `${user?.first_name?.[0] ?? ''}${user?.last_name?.[0] ?? ''}`.toUpperCase();
   const userName = `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim();
-  const avatarSrc = myProfile?.profile_picture ? `http://localhost:8000${myProfile.profile_picture}` : undefined;
+  const avatarSrc = myProfile?.profile_picture ? `http://localhost:8010${myProfile.profile_picture}` : undefined;
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
