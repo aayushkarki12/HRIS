@@ -159,7 +159,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8010/api/v1';
       
       const registrationData = {
         username: data.username,

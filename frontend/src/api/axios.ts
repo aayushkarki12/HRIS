@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
 
 const api: AxiosInstance = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8010/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

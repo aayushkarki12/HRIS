@@ -216,10 +216,10 @@ pip install -r requirements.txt
 cp .env.example .env
 
 alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8010
 ```
 
-API docs available at `http://localhost:8000/docs` once running.
+API docs available at `http://localhost:8010/docs` once running.
 
 ### Frontend
 

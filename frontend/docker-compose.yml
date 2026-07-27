@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: .
+    container_name: hris-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8010/api/v1
+    volumes:
+      - .:/app
+      - /app/node_modules
