@@ -1,12 +1,25 @@
-FROM node:20-alpine
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 
-EXPOSE 3000
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+RUN npx vite build
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN npm install --global serve
+
+COPY --from=build /app/dist ./dist
+
+EXPOSE 3002
+
+CMD ["npx", "serve", "-s", "dist", "-l", "3002"]

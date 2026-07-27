@@ -2,12 +2,12 @@ version: '3.8'
 
 services:
   frontend:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_API_URL: ${VITE_API_URL}
     container_name: hris-frontend
     ports:
-      - "3000:3000"
+      - "3002:3002"
     environment:
       VITE_API_URL: ${VITE_API_URL}
-    volumes:
-      - .:/app
-      - /app/node_modules

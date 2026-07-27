@@ -227,7 +227,7 @@ npm install
 npm run dev
 ```
 
-App available at `http://localhost:3000` (or the port Vite reports).
+App available at `http://localhost:3002` (or the port Vite reports).
 
 ---
 
