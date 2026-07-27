@@ -33,7 +33,7 @@ RUN uv sync --frozen --no-dev
 COPY . .
 
 # Expose the port the app runs on
-EXPOSE 8000
+EXPOSE 8010
 
 # Run the application
-CMD ["uv", "run", "fastapi", "run", "app.main.py", "--workers", "2", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "fastapi", "run", "app/main.py", "--workers", "2", "--host", "0.0.0.0", "--port", "8010"]
