@@ -32,6 +32,7 @@ import {
 import {
   employeeService, resourceService, projectService, assignmentService,
   leaveService, attendanceService, auditLogService,
+  expenseService, voucherService, budgetService, invoiceService,
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -517,6 +518,82 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
   );
 };
 
+// ─── Permission-aware approvals widgets ───────────────────────────────────────
+// Shown on the self-service dashboard for anyone holding an approval/management
+// permission but not the legacy admin/manager role string - Team Leads, Project
+// Managers, Accountants, HR Managers, etc. Which widgets appear is driven purely
+// by hasPermission() rather than a department field, since a person's granted
+// permissions are a more reliable signal of what they actually need to act on
+// than a free-text department string.
+const ApprovalsWidgets: React.FC<{ startIndex: number }> = ({ startIndex }) => {
+  const { hasPermission } = useAuth();
+
+  const canApproveLeave = hasPermission('leave.approve');
+  const canManageResources = hasPermission('resources.manage');
+  const canApproveExpenses = hasPermission('expense.approve_manager') || hasPermission('expense.approve_accounting');
+  const canManageProjects = hasPermission('projects.manage') || hasPermission('assignments.manage');
+  const canApproveVouchers = hasPermission('voucher.approve');
+  const canApproveBudgets = hasPermission('budget.approve');
+  const canApproveInvoices = hasPermission('invoice.approve');
+
+  const anyWidget = canApproveLeave || canManageResources || canApproveExpenses || canManageProjects
+    || canApproveVouchers || canApproveBudgets || canApproveInvoices;
+
+  const { data: pendingLeaves = [] } = useQuery({
+    queryKey: ['leaves', 'pending'], queryFn: leaveService.getPending, retry: 1, enabled: canApproveLeave,
+  });
+  const { data: pendingResourceRequests = [] } = useQuery({
+    queryKey: ['resource-requests', 'pending'], queryFn: () => resourceService.getRequests('pending'), retry: 1, enabled: canManageResources,
+  });
+  const { data: pendingExpenses = [] } = useQuery({
+    queryKey: ['expenses', 'pending'], queryFn: expenseService.getPending, retry: 1, enabled: canApproveExpenses,
+  });
+  const { data: managedProjects = [] } = useQuery({
+    queryKey: ['projects'], queryFn: projectService.getAll, retry: 1, enabled: canManageProjects,
+  });
+  const { data: pendingVouchers = [] } = useQuery({
+    queryKey: ['vouchers', 'submitted'], queryFn: () => voucherService.getAll({ status: 'submitted' }), retry: 1, enabled: canApproveVouchers,
+  });
+  const { data: pendingBudgets = [] } = useQuery({
+    queryKey: ['budgets', 'submitted'], queryFn: () => budgetService.getBudgets({ status: 'submitted' }), retry: 1, enabled: canApproveBudgets,
+  });
+  const { data: invoices = [] } = useQuery({
+    queryKey: ['invoices'], queryFn: () => invoiceService.getAll(), retry: 1, enabled: canApproveInvoices,
+  });
+
+  if (!anyWidget) return null;
+
+  const activeManagedProjects = (managedProjects as any[]).filter((p) => p.status === 'active');
+  const invoicesPending = (invoices as any[]).filter((i) => ['sent', 'partially_paid'].includes(i.status));
+
+  const stats = [
+    canApproveLeave && { title: 'Pending Leave Approvals', value: pendingLeaves.length, icon: LeaveIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: 'Awaiting your decision', path: '/leaves' },
+    canManageResources && { title: 'Pending Resource Requests', value: pendingResourceRequests.length, icon: ResourceRequestIcon, color: '#DC2626', bgColor: '#FEF2F2', subtitle: 'Awaiting your decision', path: '/resources' },
+    canApproveExpenses && { title: 'Pending Expense Claims', value: pendingExpenses.length, icon: ExpenseIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: 'Needs your approval', path: '/expense-claims' },
+    canManageProjects && { title: 'Active Projects', value: activeManagedProjects.length, icon: FolderIcon, color: '#4F46E5', bgColor: '#EEF2FF', subtitle: 'You manage', path: '/projects' },
+    canApproveVouchers && { title: 'Pending Vouchers', value: pendingVouchers.length, icon: PayrollIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: 'Submitted for approval', path: '/vouchers' },
+    canApproveBudgets && { title: 'Pending Budgets', value: pendingBudgets.length, icon: PayrollIcon, color: '#16A34A', bgColor: '#F0FDF4', subtitle: 'Submitted for approval', path: '/budgets' },
+    canApproveInvoices && { title: 'Invoices Awaiting Payment', value: invoicesPending.length, icon: InvoiceIcon, color: '#4F46E5', bgColor: '#EEF2FF', subtitle: 'Sent or partially paid', path: '/invoices' },
+  ].filter(Boolean) as any[];
+
+  return (
+    <Box sx={{ mt: 1 }}>
+      <Divider sx={{ mb: 3 }} />
+      <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Your Approvals & Team</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Based on your designation's permissions
+      </Typography>
+      <Box sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: `repeat(${Math.min(stats.length, 4)}, 1fr)` },
+        gap: 2,
+      }}>
+        {stats.map((stat, i) => <StatCard key={stat.title} index={startIndex + i} {...stat} />)}
+      </Box>
+    </Box>
+  );
+};
+
 // ─── Employee (self-service) dashboard ────────────────────────────────────────
 const statusMeta: Record<string, { color: string; icon: any }> = {
   present:  { color: '#16A34A', icon: CheckCircleIcon },
@@ -649,6 +726,8 @@ const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName
           )}
         </ChartPanel>
       </Box>
+
+      <ApprovalsWidgets startIndex={7} />
     </Box>
   );
 };
