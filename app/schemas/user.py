@@ -125,6 +125,35 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class InvitationDetails(BaseModel):
+    """Read-only profile info shown on the accept-invitation page - the new
+    hire can only choose a username and password, everything else here was
+    set by whoever added them as an employee."""
+    first_name: str
+    last_name: str
+    email: str
+    employee_id: str
+    department: str
+    position: str
+    designation: Optional[str] = None
+    seniority_level: Optional[str] = None
+    joining_date: Optional[date] = None
+    tenant_name: str
+    username_suggestion: str
+
+
+class AcceptInvitationRequest(BaseModel):
+    token: str
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8, max_length=100)
+
+    @validator('username')
+    def username_alphanumeric(cls, v):
+        if not v.isalnum():
+            raise ValueError('Username must be alphanumeric')
+        return v
+
+
 class TokenData(BaseModel):
     user_id: Optional[int] = None
     role: Optional[str] = None

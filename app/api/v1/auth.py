@@ -23,10 +23,13 @@ from ...models.employee import Employee
 from ...models.tenant import Tenant
 from ...models.refresh_token import RefreshToken
 from ...models.password_reset_token import PasswordResetToken
+from ...models.rbac import Role, SeniorityLevel
+from .employees import _generate_employee_id
 from ...schemas.user import (
     UserCreate, UserResponse, Token,
     RefreshTokenRequest, AccessTokenResponse,
     ForgotPasswordRequest, ResetPasswordRequest,
+    InvitationDetails, AcceptInvitationRequest,
 )
 from ...core.security import validate_password_strength
 from ...core.email import send_password_reset_email
@@ -108,9 +111,9 @@ def register_user(
     db.add(db_user)
     db.flush()
     
-    # Generate employee ID
-    employee_count = db.query(Employee).filter(Employee.tenant_id == tenant.id).count()
-    employee_id = f"EMP{employee_count + 1:04d}"
+    # Generate employee ID (same tenant-prefixed scheme as admin-created
+    # employees - see employees.py::_generate_employee_id)
+    employee_id = _generate_employee_id(db, tenant)
     
     # Create employee profile
     db_employee = Employee(
@@ -401,3 +404,102 @@ def reset_password(
     db.commit()
 
     return {"message": "Password has been reset successfully. Please log in with your new password."}
+
+
+def _get_valid_invite_token(db: Session, token: str) -> PasswordResetToken:
+    token_hash = hash_refresh_token(token)
+    db_token = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
+    if (
+        not db_token or not db_token.is_invite or db_token.used
+        or db_token.expires_at < datetime.now(timezone.utc)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This invitation link is invalid or has expired. Ask an admin to resend it.",
+        )
+    return db_token
+
+
+@router.get("/invitation", response_model=InvitationDetails)
+def get_invitation_details(token: str = Query(...), db: Session = Depends(get_db)):
+    """Public (token-gated, not login-gated) lookup of a pending employee
+    invite's read-only profile details, for the accept-invitation page."""
+    db_token = _get_valid_invite_token(db, token)
+
+    user = db.query(User).filter(User.id == db_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    employee = db.query(Employee).filter(Employee.user_id == user.id).first()
+    tenant = db.query(Tenant).filter(Tenant.id == db_token.tenant_id).first()
+    role = db.query(Role).filter(Role.id == user.role_id).first() if user.role_id else None
+    seniority = (
+        db.query(SeniorityLevel).filter(SeniorityLevel.id == employee.seniority_level_id).first()
+        if employee and employee.seniority_level_id else None
+    )
+
+    return InvitationDetails(
+        first_name=user.first_name,
+        last_name=user.last_name,
+        email=user.email,
+        employee_id=employee.employee_id if employee else "",
+        department=employee.department if employee else "",
+        position=employee.position if employee else "",
+        designation=role.name if role else None,
+        seniority_level=seniority.name if seniority else None,
+        joining_date=employee.joining_date if employee else None,
+        tenant_name=tenant.name if tenant else "",
+        username_suggestion=user.username,
+    )
+
+
+@router.get("/invitation/check-username")
+def check_invitation_username(token: str = Query(...), username: str = Query(...), db: Session = Depends(get_db)):
+    """Live availability check while the new hire is typing a username on
+    the accept-invitation page."""
+    db_token = _get_valid_invite_token(db, token)
+
+    if not username.isalnum() or len(username) < 3:
+        return {"available": False, "reason": "Must be at least 3 alphanumeric characters"}
+
+    taken = db.query(User).filter(
+        User.tenant_id == db_token.tenant_id,
+        User.username == username,
+        User.id != db_token.user_id,
+    ).first()
+    return {"available": taken is None}
+
+
+@router.post("/accept-invitation", status_code=status.HTTP_200_OK)
+def accept_invitation(data: AcceptInvitationRequest, db: Session = Depends(get_db)):
+    """Redeem an employee invite: pick a real username (replacing the
+    auto-generated placeholder) and set a password. Same single-use/expiry/
+    refresh-token-revocation handling as reset_password."""
+    db_token = _get_valid_invite_token(db, data.token)
+
+    password_error = validate_password_strength(data.password)
+    if password_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
+
+    user = db.query(User).filter(User.id == db_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    existing = db.query(User).filter(
+        User.tenant_id == user.tenant_id,
+        User.username == data.username,
+        User.id != user.id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That username is already taken")
+
+    user.username = data.username
+    user.hashed_password = get_password_hash(data.password)
+    db_token.used = True
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False
+    ).update({"revoked": True})
+    db.commit()
+
+    return {"message": "Your account is set up. Please log in with your new username and password."}

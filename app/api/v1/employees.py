@@ -1,22 +1,33 @@
 import logging
 import os
+import re
+import secrets
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_tenant
 from ...core.permissions import require_permission, user_has_permission
 from ...core.audit import record_audit_log
+from ...core.config import settings
+from ...core.security import get_password_hash, generate_refresh_token, hash_refresh_token
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
+from ...models.rbac import Role
+from ...models.password_reset_token import PasswordResetToken
 from ...schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 
 logger = logging.getLogger(__name__)
+
+# An invite link needs to survive an admin creating an employee today and the
+# new hire clicking it days later - much longer than the 60-minute window a
+# self-service "I forgot my password" email gets (see auth.py).
+EMPLOYEE_INVITE_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -32,17 +43,89 @@ def _can_view_all(db: Session, viewer: User) -> bool:
     return viewer.role in ("admin", "manager") or user_has_permission(db, viewer, "employees.view_all")
 
 
-def _generate_employee_id(db: Session, tenant_id: int) -> str:
-    """EMP0001, EMP0002, ... per tenant. Employees are only ever soft-deleted
-    (is_active=False), so the row count is a stable, monotonically increasing
-    starting point; the uniqueness loop below covers the rare case where an
-    earlier employee_id was set explicitly and collides with the next
-    candidate."""
-    seq = db.query(Employee).filter(Employee.tenant_id == tenant_id).count() + 1
+def _generate_username(db: Session, tenant_id: int, email: str) -> str:
+    """Derive a unique, alphanumeric username from the local part of an email
+    (matches UserBase's alphanumeric-only validator), appending a numeric
+    suffix on collision."""
+    base = re.sub(r"[^a-zA-Z0-9]", "", email.split("@")[0]).lower() or "user"
+    candidate = base
+    suffix = 1
+    while db.query(User).filter(User.tenant_id == tenant_id, User.username == candidate).first():
+        suffix += 1
+        candidate = f"{base}{suffix}"
+    return candidate
+
+
+def _create_login_and_invite(db: Session, tenant: Tenant, employee_data: EmployeeCreate) -> tuple[User, str]:
+    """Provision a User account for a brand-new employee who doesn't have one
+    yet, with an unusable random password, and return (user, invite_link) so
+    the admin can hand the link to the new hire. They land on /invitation,
+    see their read-only profile details, and pick their own username (the
+    generated one here is just a placeholder) and password - a dedicated
+    flow from "forgot password" (see PasswordResetToken.is_invite), with a
+    longer expiry suited to an invite than a same-session reset."""
+    if db.query(User).filter(User.tenant_id == tenant.id, User.email == employee_data.email).first():
+        raise HTTPException(status_code=400, detail="A user account with this email already exists")
+
+    role = None
+    if employee_data.role_id is not None:
+        role = db.query(Role).filter(Role.id == employee_data.role_id, Role.tenant_id == tenant.id).first()
+        if not role:
+            raise HTTPException(status_code=404, detail="Designation (role) not found")
+
+    user = User(
+        username=_generate_username(db, tenant.id, employee_data.email),
+        email=employee_data.email,
+        hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+        first_name=employee_data.first_name,
+        last_name=employee_data.last_name,
+        role="user",
+        role_id=role.id if role else None,
+        is_active=True,
+        tenant_id=tenant.id,
+    )
+    db.add(user)
+    db.flush()
+
+    raw_token = generate_refresh_token()
+    db.add(PasswordResetToken(
+        user_id=user.id,
+        tenant_id=tenant.id,
+        token_hash=hash_refresh_token(raw_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=EMPLOYEE_INVITE_TOKEN_EXPIRE_MINUTES),
+        used=False,
+        is_invite=True,
+    ))
+
+    invite_link = f"{settings.FRONTEND_URL}/invitation?token={raw_token}"
+    return user, invite_link
+
+
+def _tenant_id_prefix(tenant_name: str) -> str:
+    """"Cantor Dust" -> "CD"; a single-word name takes its first 3 letters;
+    an empty/unusable name falls back to "EMP"."""
+    words = re.findall(r"[A-Za-z0-9]+", tenant_name or "")
+    if len(words) >= 2:
+        prefix = "".join(w[0] for w in words[:4]).upper()
+    elif words:
+        prefix = words[0][:3].upper()
+    else:
+        prefix = ""
+    return prefix or "EMP"
+
+
+def _generate_employee_id(db: Session, tenant: Tenant) -> str:
+    """{TENANT_PREFIX}_001, _002, ... per tenant (e.g. "CD_001" for "Cantor
+    Dust"). Employees are only ever soft-deleted (is_active=False), so the
+    row count is a stable, monotonically increasing starting point; the
+    uniqueness loop below covers the rare case where an earlier employee_id
+    was set explicitly and collides with the next candidate."""
+    prefix = _tenant_id_prefix(tenant.name)
+    seq = db.query(Employee).filter(Employee.tenant_id == tenant.id).count() + 1
     while True:
-        candidate = f"EMP{seq:04d}"
+        candidate = f"{prefix}_{seq:03d}"
         exists = db.query(Employee).filter(
-            Employee.tenant_id == tenant_id, Employee.employee_id == candidate
+            Employee.tenant_id == tenant.id, Employee.employee_id == candidate
         ).first()
         if not exists:
             return candidate
@@ -279,9 +362,12 @@ def create_employee(
     db: Session = Depends(get_db)
 ):
     """Create a new employee for the current tenant (admin/employees.edit only).
-    employee_id is auto-generated (EMP0001, ...) when not explicitly supplied."""
+    employee_id is auto-generated (EMP0001, ...) when not explicitly supplied.
+    When no user_id is given, also provisions a login for the new hire and
+    returns a one-time invite_link (share it with them to set their own
+    password and log in) - it is never retrievable again after this response."""
     try:
-        data = employee_data.model_dump(exclude={"employee_id"})
+        data = employee_data.model_dump(exclude={"employee_id", "role_id"})
 
         if employee_data.employee_id:
             existing = db.query(Employee).filter(
@@ -292,7 +378,12 @@ def create_employee(
                 raise HTTPException(status_code=400, detail="Employee ID already exists")
             employee_id = employee_data.employee_id
         else:
-            employee_id = _generate_employee_id(db, tenant.id)
+            employee_id = _generate_employee_id(db, tenant)
+
+        invite_link = None
+        if not employee_data.user_id:
+            new_user, invite_link = _create_login_and_invite(db, tenant, employee_data)
+            data["user_id"] = new_user.id
 
         db_employee = Employee(**data, employee_id=employee_id, tenant_id=tenant.id)
         db.add(db_employee)
@@ -303,7 +394,9 @@ def create_employee(
 
         db.commit()
         db.refresh(db_employee)
-        return db_employee
+        resp = EmployeeResponse.model_validate(db_employee)
+        resp.invite_link = invite_link
+        return resp
     except HTTPException:
         db.rollback()
         raise

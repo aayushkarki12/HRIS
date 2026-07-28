@@ -35,6 +35,10 @@ class EmployeeCreate(EmployeeBase):
     employee_id: Optional[str] = Field(None, min_length=3, max_length=20)
     user_id: Optional[int] = None
     seniority_level_id: Optional[int] = None
+    # Designation to assign the auto-provisioned login (see
+    # employees.py::_create_login_and_invite). Ignored if user_id is set,
+    # since then no new login is created.
+    role_id: Optional[int] = None
 
 
 class EmployeeUpdate(BaseModel):
@@ -74,6 +78,10 @@ class EmployeeResponse(EmployeeBase):
     seniority_level_id: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    # Only ever populated on the create_employee response - a one-time
+    # invite link for the new hire to set their password. Never
+    # retrievable again afterwards (there's no getter for it).
+    invite_link: Optional[str] = None
 
     class Config:
         from_attributes = True
