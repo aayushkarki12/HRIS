@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
+from ...core.permissions import user_has_permission
 from ...core.audit import record_audit_log
 from ...core.notifications import notify_user
 from ...models.user import User
@@ -85,7 +86,7 @@ def get_pending_leaves(
         employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
         if employee:
             query = query.join(Employee).filter(Employee.department == employee.department)
-    elif current_user.role not in ["admin", "manager"]:
+    elif current_user.role not in ["admin"] and not user_has_permission(db, current_user, "leave.approve"):
         employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
         if employee:
             query = query.filter(Leave.employee_id == employee.id)
@@ -201,9 +202,9 @@ def approve_leave(
         raise HTTPException(status_code=404, detail="Leave request not found")
     
     # Check authorization
-    if current_user.role not in ["admin", "manager"]:
+    if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "leave.approve"):
         raise HTTPException(status_code=403, detail="Not authorized to approve leaves")
-    
+
     if current_user.role == "manager":
         manager_employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
         employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
@@ -261,9 +262,9 @@ def reject_leave(
         raise HTTPException(status_code=404, detail="Leave request not found")
     
     # Check authorization (same as approve)
-    if current_user.role not in ["admin", "manager"]:
+    if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "leave.approve"):
         raise HTTPException(status_code=403, detail="Not authorized to reject leaves")
-    
+
     if current_user.role == "manager":
         manager_employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
         employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
