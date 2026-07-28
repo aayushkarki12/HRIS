@@ -34,7 +34,8 @@ import { documentService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const Documents: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, hasPermission } = useAuth();
+  const canViewAll = isAdmin || hasPermission('documents.verify');
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -45,8 +46,8 @@ const Documents: React.FC = () => {
   const [error, setError] = useState<string>('');
 
   const { data: documents, isLoading, refetch } = useQuery({
-    queryKey: ['documents'],
-    queryFn: documentService.getMyDocuments,
+    queryKey: ['documents', canViewAll ? 'all' : 'mine'],
+    queryFn: canViewAll ? documentService.getAll : documentService.getMyDocuments,
   });
 
   const uploadMutation = useMutation({
@@ -157,10 +158,10 @@ const Documents: React.FC = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#2c3e50' }}>
-            My Documents
+            {canViewAll ? 'All Documents' : 'My Documents'}
           </Typography>
           <Typography variant="body2" color="textSecondary">
-            Upload and manage your documents
+            {canViewAll ? 'Review and verify documents uploaded across the company' : 'Upload and manage your documents'}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
@@ -192,6 +193,11 @@ const Documents: React.FC = () => {
                       <Typography variant="h6" gutterBottom>
                         {doc.document_name}
                       </Typography>
+                      {canViewAll && doc.employee_name && (
+                        <Typography variant="caption" color="textSecondary" display="block" sx={{ mb: 0.5 }}>
+                          {doc.employee_name}
+                        </Typography>
+                      )}
                       <Chip
                         label={getDocumentTypeLabel(doc.document_type)}
                         color={getDocumentTypeColor(doc.document_type)}
@@ -227,7 +233,7 @@ const Documents: React.FC = () => {
                   </Typography>
                 </CardContent>
                 <CardActions>
-                  {isAdmin && !doc.is_verified && (
+                  {canViewAll && !doc.is_verified && (
                     <Button
                       size="small"
                       variant="contained"

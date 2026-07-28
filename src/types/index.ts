@@ -59,6 +59,7 @@ export interface Employee {
   user?: User;
   seniority_level_id?: number | null;
   invite_status?: 'invited' | 'expired' | 'accepted' | null;
+  projects?: string[];
   created_at: string;
   updated_at: string;
 }

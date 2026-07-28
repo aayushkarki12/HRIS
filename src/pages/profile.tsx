@@ -24,6 +24,7 @@ import {
   Cancel as CancelIcon,
   Lock as LockIcon,
   CameraAlt as CameraIcon,
+  Close as RemoveAvatarIcon,
   Person as PersonIcon,
   Work as WorkIcon,
   ContactPhone as EmergencyIcon,
@@ -167,6 +168,17 @@ const Profile: React.FC = () => {
     },
   });
 
+  const deleteAvatarMutation = useMutation({
+    mutationFn: () => employeeService.deleteAvatar(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
+      toast.success('Profile photo removed');
+    },
+    onError: (err: any) => {
+      toast.error(getErrorMessage(err, 'Failed to remove photo'));
+    },
+  });
+
   const pwdMutation = useMutation({
     mutationFn: (data: PwdForm) => {
       if (!user) throw new Error('Not logged in');
@@ -264,6 +276,23 @@ const Profile: React.FC = () => {
                 {avatarMutation.isPending ? <CircularProgress size={12} /> : <CameraIcon sx={{ fontSize: 14 }} />}
               </IconButton>
             </Tooltip>
+            {profile?.profile_picture && (
+              <Tooltip title="Remove photo">
+                <IconButton
+                  size="small"
+                  onClick={() => deleteAvatarMutation.mutate()}
+                  disabled={deleteAvatarMutation.isPending}
+                  sx={{
+                    position: 'absolute', top: -4, right: -4,
+                    bgcolor: '#fff', border: '1px solid', borderColor: 'divider',
+                    width: 22, height: 22,
+                    '&:hover': { bgcolor: 'error.main', color: '#fff', borderColor: 'error.main' },
+                  }}
+                >
+                  {deleteAvatarMutation.isPending ? <CircularProgress size={10} /> : <RemoveAvatarIcon sx={{ fontSize: 12 }} />}
+                </IconButton>
+              </Tooltip>
+            )}
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleAvatarChange} />
           </Box>
           <Box sx={{ flex: 1 }}>

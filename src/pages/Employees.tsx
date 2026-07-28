@@ -39,6 +39,9 @@ import {
   ContentCopy as CopyIcon,
   CheckCircle as ActivateIcon,
   MailOutlined as InviteIcon,
+  History as HistoryIcon,
+  WorkHistory as JoinedIcon,
+  TrendingUp as PromotionIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { employeeService, rbacService, getErrorMessage } from '../services/api';
@@ -117,6 +120,8 @@ const Employees: React.FC = () => {
   });
 
   const positionValue = watch('position');
+  const departmentValue = watch('department');
+  const seniorityLevelIdValue = watch('seniority_level_id');
 
   const createRoleMutation = useMutation({
     mutationFn: (name: string) => rbacService.createRole({ name, permission_keys: [] }),
@@ -191,6 +196,13 @@ const Employees: React.FC = () => {
   });
 
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<Employee | null>(null);
+
+  const [historyTarget, setHistoryTarget] = useState<Employee | null>(null);
+  const { data: history = [], isLoading: historyLoading } = useQuery({
+    queryKey: ['employee-history', historyTarget?.id],
+    queryFn: () => employeeService.getHistory(historyTarget!.id),
+    enabled: !!historyTarget,
+  });
   const permanentDeleteMutation = useMutation({
     mutationFn: employeeService.permanentDelete,
     onSuccess: (result: any) => {
@@ -266,7 +278,7 @@ const Employees: React.FC = () => {
     setNewDesignationName('');
   };
 
-  const colCount = isAdmin ? 9 : 8;
+  const colCount = isAdmin ? 10 : 9;
   const editingEmployee = editingId ? (employees as Employee[]).find((e) => e.id === editingId) : null;
 
   return (
@@ -331,6 +343,7 @@ const Employees: React.FC = () => {
                   <TableCell>Email</TableCell>
                   <TableCell>Department</TableCell>
                   <TableCell>Position</TableCell>
+                  <TableCell>Projects</TableCell>
                   <TableCell>Seniority</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Login</TableCell>
@@ -379,6 +392,17 @@ const Employees: React.FC = () => {
                         <Typography variant="body2">{employee.position}</Typography>
                       </TableCell>
                       <TableCell>
+                        {(employee as any).projects?.length > 0 ? (
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            {(employee as any).projects.map((p: string) => (
+                              <Chip key={p} label={p} size="small" variant="outlined" color="primary" />
+                            ))}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.disabled">-</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         {seniorityName((employee as any).seniority_level_id) ? (
                           <Chip label={seniorityName((employee as any).seniority_level_id)} size="small" variant="outlined" />
                         ) : (
@@ -405,6 +429,11 @@ const Employees: React.FC = () => {
                             <Tooltip title="Edit">
                               <IconButton size="small" onClick={() => handleEdit(employee)} color="primary">
                                 <EditIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Career history">
+                              <IconButton size="small" onClick={() => setHistoryTarget(employee)} color="inherit">
+                                <HistoryIcon sx={{ fontSize: 16 }} />
                               </IconButton>
                             </Tooltip>
                             {(employee.invite_status === 'invited' || employee.invite_status === 'expired') && (
@@ -530,14 +559,14 @@ const Employees: React.FC = () => {
                   fullWidth
                   select
                   label="Department"
-                  defaultValue=""
-                  {...register('department')}
+                  value={departmentValue ?? ''}
+                  onChange={(e) => setValue('department', e.target.value, { shouldValidate: true })}
                   error={!!errors.department}
                   helperText={errors.department?.message}
                   size="small"
                 >
-                  {editingEmployee?.department && !(departments as any[]).some((d) => d.name === editingEmployee.department) && (
-                    <MenuItem value={editingEmployee.department}>{editingEmployee.department} (not in list)</MenuItem>
+                  {departmentValue && !(departments as any[]).some((d) => d.name === departmentValue) && (
+                    <MenuItem value={departmentValue}>{departmentValue} (not in list)</MenuItem>
                   )}
                   {(departments as any[]).map((d) => (
                     <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
@@ -558,8 +587,8 @@ const Employees: React.FC = () => {
                   fullWidth
                   select
                   label="Seniority Level"
-                  defaultValue=""
-                  {...register('seniority_level_id')}
+                  value={seniorityLevelIdValue ?? ''}
+                  onChange={(e) => setValue('seniority_level_id', e.target.value)}
                   error={!!errors.seniority_level_id}
                   helperText={errors.seniority_level_id?.message || 'Affects approval limits, e.g. how large an invoice a Senior Accountant can approve'}
                   size="small"
@@ -718,6 +747,55 @@ const Employees: React.FC = () => {
             >
               {permanentDeleteMutation.isPending ? 'Deleting…' : 'Delete Permanently'}
             </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Career history timeline */}
+        <Dialog open={!!historyTarget} onClose={() => setHistoryTarget(null)} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            Career History
+            {historyTarget && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                {historyTarget.first_name} {historyTarget.last_name}
+              </Typography>
+            )}
+          </DialogTitle>
+          <DialogContent>
+            {historyLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <Skeleton variant="rectangular" width="100%" height={120} />
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {[...history].reverse().map((entry, i) => (
+                  <Box key={i} sx={{ display: 'flex', gap: 1.5, position: 'relative', pb: i === history.length - 1 ? 0 : 3 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <Box sx={{
+                        width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        bgcolor: entry.action === 'joined' ? '#EEF2FF' : '#F0FDF4', flexShrink: 0,
+                      }}>
+                        {entry.action === 'joined'
+                          ? <JoinedIcon sx={{ fontSize: 16, color: '#4F46E5' }} />
+                          : <PromotionIcon sx={{ fontSize: 16, color: '#16A34A' }} />}
+                      </Box>
+                      {i !== history.length - 1 && <Box sx={{ width: '2px', flex: 1, bgcolor: 'divider', my: 0.5 }} />}
+                    </Box>
+                    <Box sx={{ pb: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{entry.details}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(entry.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}
+                {history.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">No history recorded yet.</Typography>
+                )}
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setHistoryTarget(null)}>Close</Button>
           </DialogActions>
         </Dialog>
 
