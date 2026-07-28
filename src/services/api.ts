@@ -183,12 +183,27 @@ export const authService = {
     const response = await api.get('/auth/me/permissions');
     return response.data;
   },
+
+  getInvitationDetails: async (token: string) => {
+    const response = await api.get('/auth/invitation', { params: { token } });
+    return response.data;
+  },
+
+  checkInvitationUsername: async (token: string, username: string): Promise<{ available: boolean; reason?: string }> => {
+    const response = await api.get('/auth/invitation/check-username', { params: { token, username } });
+    return response.data;
+  },
+
+  acceptInvitation: async (token: string, username: string, password: string) => {
+    const response = await api.post('/auth/accept-invitation', { token, username, password });
+    return response.data;
+  },
 };
 
 // ============ USER SERVICE (admin: role & account management) ============
 export const userService = {
   getAll: async (search?: string) => {
-    const response = await api.get('/users/', { params: { search } });
+    const response = await api.get('/users', { params: { search } });
     return response.data;
   },
 
@@ -229,7 +244,7 @@ export const userService = {
 // ============ NOTIFICATION SERVICE ============
 export const notificationService = {
   getAll: async () => {
-    const response = await api.get('/notifications/');
+    const response = await api.get('/notifications');
     return response.data;
   },
 
@@ -355,12 +370,12 @@ export const resourceService = {
 
   // Resource requests (separate prefix to avoid route collision with /{resource_id})
   createRequest: async (data: { resource_id: number; reason?: string }) => {
-    const response = await api.post('/resource-requests/', data);
+    const response = await api.post('/resource-requests', data);
     return response.data;
   },
 
   getRequests: async (status?: string) => {
-    const response = await api.get('/resource-requests/', { params: status ? { status } : {} });
+    const response = await api.get('/resource-requests', { params: status ? { status } : {} });
     return response.data;
   },
 
@@ -614,12 +629,12 @@ export const attendanceService = {
 // ============ WORK LOCATION SERVICE ============
 export const workLocationService = {
   getAll: async () => {
-    const response = await api.get('/work-locations/');
+    const response = await api.get('/work-locations');
     return response.data;
   },
 
   create: async (data: any) => {
-    const response = await api.post('/work-locations/', data);
+    const response = await api.post('/work-locations', data);
     return response.data;
   },
 
@@ -1001,7 +1016,7 @@ export const expenseService = {
 // ============ INVOICE SERVICE ============
 export const invoiceService = {
   getAll: async (params?: { status?: string }) => {
-    const response = await api.get('/invoices/', { params });
+    const response = await api.get('/invoices', { params });
     return response.data;
   },
 
@@ -1016,7 +1031,7 @@ export const invoiceService = {
   },
 
   create: async (data: any) => {
-    const response = await api.post('/invoices/', data);
+    const response = await api.post('/invoices', data);
     return response.data;
   },
 
@@ -1044,18 +1059,18 @@ export const invoiceService = {
 // ============ AUDIT LOG SERVICE ============
 export const auditLogService = {
   getRecent: async (limit = 10) => {
-    const response = await api.get('/audit-logs/', { params: { limit } });
+    const response = await api.get('/audit-logs', { params: { limit } });
     return response.data;
   },
   getByEntity: async (entity_type: string, entity_id: number, limit = 50) => {
-    const response = await api.get('/audit-logs/', { params: { entity_type, entity_id, limit } });
+    const response = await api.get('/audit-logs', { params: { entity_type, entity_id, limit } });
     return response.data;
   },
   getAll: async (params?: {
     skip?: number; limit?: number; entity_type?: string; entity_id?: number;
     user_id?: number; action?: string; module?: string; start_date?: string; end_date?: string;
   }) => {
-    const response = await api.get('/audit-logs/', { params });
+    const response = await api.get('/audit-logs', { params });
     return response.data;
   },
   getMeta: async () => {
@@ -1074,7 +1089,7 @@ export const auditLogService = {
 // ============ VOUCHER SERVICE ============
 export const voucherService = {
   getAll: async (params?: { voucher_type?: string; status?: string; skip?: number; limit?: number }) => {
-    const response = await api.get('/vouchers/', { params });
+    const response = await api.get('/vouchers', { params });
     return response.data;
   },
 
@@ -1084,7 +1099,7 @@ export const voucherService = {
   },
 
   create: async (data: any) => {
-    const response = await api.post('/vouchers/', data);
+    const response = await api.post('/vouchers', data);
     return response.data;
   },
 
@@ -1269,7 +1284,7 @@ export const inventoryService = {
 
 export const budgetService = {
   getBudgets: async (params?: { fiscal_year?: number; scope_type?: string; status?: string }) => {
-    const response = await api.get('/budgets/', { params });
+    const response = await api.get('/budgets', { params });
     return response.data;
   },
   getBudget: async (id: number) => {
@@ -1277,7 +1292,7 @@ export const budgetService = {
     return response.data;
   },
   createBudget: async (data: any) => {
-    const response = await api.post('/budgets/', data);
+    const response = await api.post('/budgets', data);
     return response.data;
   },
   updateBudget: async (id: number, data: any) => {

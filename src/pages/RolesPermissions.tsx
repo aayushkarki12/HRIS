@@ -52,6 +52,10 @@ const RolesPermissions: React.FC = () => {
     queryKey: ['rbac-approval-limits'],
     queryFn: () => rbacService.getApprovalLimits(),
   });
+  const { data: departments, isLoading: departmentsLoading } = useQuery({
+    queryKey: ['rbac-departments'],
+    queryFn: () => rbacService.getDepartments(),
+  });
 
   const permissionsByCategory = useMemo(() => {
     const groups: Record<string, any[]> = {};
@@ -216,7 +220,47 @@ const RolesPermissions: React.FC = () => {
     });
   };
 
-  const loading = permsLoading || rolesLoading || seniorityLoading || limitsLoading;
+  // ---------- Department dialog ----------
+  const [deptModalOpen, setDeptModalOpen] = useState(false);
+  const [deptEditing, setDeptEditing] = useState<any>(null);
+  const [deptForm, setDeptForm] = useState({ name: '' });
+  const [deptError, setDeptError] = useState('');
+
+  const openDeptModal = (dept?: any) => {
+    setDeptEditing(dept ?? null);
+    setDeptForm({ name: dept?.name ?? '' });
+    setDeptError('');
+    setDeptModalOpen(true);
+  };
+  const closeDeptModal = () => { setDeptModalOpen(false); setDeptEditing(null); setDeptError(''); };
+
+  const deptMutation = useMutation({
+    mutationFn: (data: { name: string }) => deptEditing
+      ? rbacService.updateDepartment(deptEditing.id, data)
+      : rbacService.createDepartment(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rbac-departments'] });
+      toast.success(deptEditing ? 'Department renamed' : 'Department created');
+      closeDeptModal();
+    },
+    onError: (e: any) => setDeptError(getErrorMessage(e, 'Failed to save department')),
+  });
+
+  const deptDeleteMutation = useMutation({
+    mutationFn: (id: number) => rbacService.deleteDepartment(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rbac-departments'] });
+      toast.success('Department deleted');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed to delete department')),
+  });
+
+  const submitDept = () => {
+    setDeptError('');
+    deptMutation.mutate({ name: deptForm.name });
+  };
+
+  const loading = permsLoading || rolesLoading || seniorityLoading || limitsLoading || departmentsLoading;
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
@@ -238,6 +282,7 @@ const RolesPermissions: React.FC = () => {
         <Tab label="Roles & Permissions" />
         <Tab label="Seniority Levels" />
         <Tab label="Approval Limits" />
+        <Tab label="Departments" />
       </Tabs>
 
       {/* ============ ROLES TAB ============ */}
@@ -378,6 +423,46 @@ const RolesPermissions: React.FC = () => {
         </TableContainer>
       </TabPanel>
 
+      {/* ============ DEPARTMENTS TAB ============ */}
+      <TabPanel value={tab} index={3}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => openDeptModal()}>
+            New Department
+          </Button>
+        </Box>
+        <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                <TableCell><strong>Name</strong></TableCell>
+                <TableCell align="right"><strong>Employees</strong></TableCell>
+                <TableCell align="right"><strong>Actions</strong></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(departments ?? []).map((dept: any) => (
+                <TableRow key={dept.id} hover>
+                  <TableCell sx={{ fontWeight: 600 }}>{dept.name}</TableCell>
+                  <TableCell align="right">{dept.employee_count}</TableCell>
+                  <TableCell align="right">
+                    <IconButton size="small" onClick={() => openDeptModal(dept)} title="Rename"><EditIcon fontSize="small" /></IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      title={dept.employee_count > 0 ? 'Reassign employees before deleting' : 'Delete'}
+                      disabled={dept.employee_count > 0}
+                      onClick={() => deptDeleteMutation.mutate(dept.id)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </TabPanel>
+
       {/* ============ Role Dialog ============ */}
       <Dialog open={roleModalOpen} onClose={closeRoleModal} maxWidth="sm" fullWidth>
         <DialogTitle>{roleEditing ? `Edit Role - ${roleEditing.name}` : 'New Role'}</DialogTitle>
@@ -494,6 +579,26 @@ const RolesPermissions: React.FC = () => {
           <Button onClick={closeLimitModal}>Cancel</Button>
           <Button variant="contained" onClick={submitLimit} disabled={!limitForm.max_amount || limitMutation.isPending}>
             {limitMutation.isPending ? 'Saving...' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ============ Department Dialog ============ */}
+      <Dialog open={deptModalOpen} onClose={closeDeptModal} maxWidth="xs" fullWidth>
+        <DialogTitle>{deptEditing ? 'Rename Department' : 'New Department'}</DialogTitle>
+        <DialogContent>
+          {deptError && <Alert severity="error" sx={{ mb: 2 }}>{deptError}</Alert>}
+          <TextField
+            fullWidth label="Name" value={deptForm.name} margin="normal" size="small"
+            placeholder="e.g. Human Resources"
+            helperText={deptEditing ? 'Renaming updates every employee currently in this department' : ''}
+            onChange={(e) => setDeptForm({ name: e.target.value })}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDeptModal}>Cancel</Button>
+          <Button variant="contained" onClick={submitDept} disabled={!deptForm.name.trim() || deptMutation.isPending}>
+            {deptMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

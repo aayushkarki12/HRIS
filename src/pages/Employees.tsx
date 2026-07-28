@@ -35,11 +35,14 @@ import {
   Delete as DeleteIcon,
   Search as SearchIcon,
   PersonOff as PersonOffIcon,
+  ContentCopy as CopyIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { employeeService, rbacService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Employee } from '../types';
+
+const NEW_DESIGNATION_SENTINEL = '__new__';
 
 const employeeSchema = z.object({
   first_name: z.string().min(2, 'First name is required'),
@@ -50,6 +53,7 @@ const employeeSchema = z.object({
   position: z.string().min(2, 'Position is required'),
   joining_date: z.string().min(1, 'Join date is required'),
   seniority_level_id: z.string().optional(),
+  role_id: z.string().optional(),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -95,18 +99,45 @@ const Employees: React.FC = () => {
     enabled: isAdmin,
   });
 
-  const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<EmployeeFormData>({
+  const { data: roles = [], refetch: refetchRoles } = useQuery({
+    queryKey: ['rbac-roles'],
+    queryFn: () => rbacService.getRoles(),
+    enabled: isAdmin,
+  });
+
+  const [creatingDesignation, setCreatingDesignation] = useState(false);
+  const [newDesignationName, setNewDesignationName] = useState('');
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
+  });
+
+  const roleIdValue = watch('role_id');
+
+  const createRoleMutation = useMutation({
+    mutationFn: (name: string) => rbacService.createRole({ name, permission_keys: [] }),
+    onSuccess: async (newRole: any) => {
+      await refetchRoles();
+      setValue('role_id', String(newRole.id));
+      setCreatingDesignation(false);
+      setNewDesignationName('');
+      toast.success(`Designation "${newRole.name}" created`);
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to create designation')),
   });
 
   const createMutation = useMutation({
     mutationFn: employeeService.create,
-    onSuccess: () => {
+    onSuccess: (created: any) => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       toast.success('Employee created successfully');
       setIsModalOpen(false);
       reset();
       setError('');
+      if (created?.invite_link) {
+        setInviteLink(created.invite_link);
+      }
     },
     onError: (err: any) => {
       const msg = getErrorMessage(err, 'Failed to create employee');
@@ -160,11 +191,16 @@ const Employees: React.FC = () => {
 
   const onSubmit = (data: EmployeeFormData) => {
     setError('');
-    const { seniority_level_id, ...rest } = data;
-    const payload = { ...rest, seniority_level_id: seniority_level_id ? Number(seniority_level_id) : null };
+    const { seniority_level_id, role_id, ...rest } = data;
     if (editingId) {
+      const payload = { ...rest, seniority_level_id: seniority_level_id ? Number(seniority_level_id) : null };
       updateMutation.mutate({ id: editingId, data: payload });
     } else {
+      const payload = {
+        ...rest,
+        seniority_level_id: seniority_level_id ? Number(seniority_level_id) : null,
+        role_id: role_id && role_id !== NEW_DESIGNATION_SENTINEL ? Number(role_id) : null,
+      };
       createMutation.mutate(payload);
     }
   };
@@ -188,6 +224,8 @@ const Employees: React.FC = () => {
     reset();
     setEditingId(null);
     setError('');
+    setCreatingDesignation(false);
+    setNewDesignationName('');
   };
 
   const colCount = isAdmin ? 8 : 7;
@@ -367,7 +405,10 @@ const Employees: React.FC = () => {
             <DialogContent sx={{ pt: 1 }}>
               {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
               {!editingId && (
-                <Alert severity="info" sx={{ mb: 2 }}>Employee ID is generated automatically (e.g. EMP0001).</Alert>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Employee ID is generated automatically. A login will also be created and you'll get an invite
+                  link to share with them so they can set their own username and password.
+                </Alert>
               )}
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
                 <TextField
@@ -457,6 +498,55 @@ const Employees: React.FC = () => {
                     <MenuItem key={level.id} value={String(level.id)}>{level.name}</MenuItem>
                   ))}
                 </TextField>
+                {!editingId && (
+                  creatingDesignation ? (
+                    <Box sx={{ display: 'flex', gap: 1, gridColumn: '1 / -1' }}>
+                      <TextField
+                        fullWidth
+                        autoFocus
+                        label="New Designation Name"
+                        value={newDesignationName}
+                        onChange={(e) => setNewDesignationName(e.target.value)}
+                        size="small"
+                        placeholder="e.g. Senior Developer"
+                      />
+                      <Button
+                        variant="contained"
+                        size="small"
+                        disabled={!newDesignationName.trim() || createRoleMutation.isPending}
+                        onClick={() => createRoleMutation.mutate(newDesignationName.trim())}
+                      >
+                        Add
+                      </Button>
+                      <Button size="small" color="inherit" onClick={() => { setCreatingDesignation(false); setNewDesignationName(''); }}>
+                        Cancel
+                      </Button>
+                    </Box>
+                  ) : (
+                    <TextField
+                      fullWidth
+                      select
+                      label="Designation (optional)"
+                      value={roleIdValue ?? ''}
+                      onChange={(e) => {
+                        if (e.target.value === NEW_DESIGNATION_SENTINEL) {
+                          setCreatingDesignation(true);
+                        } else {
+                          setValue('role_id', e.target.value);
+                        }
+                      }}
+                      helperText="Grants the login this designation's permissions - can also be set later from Users & Roles"
+                      size="small"
+                      sx={{ gridColumn: '1 / -1' }}
+                    >
+                      <MenuItem value="">None</MenuItem>
+                      {(roles as any[]).map((r) => (
+                        <MenuItem key={r.id} value={String(r.id)}>{r.name}</MenuItem>
+                      ))}
+                      <MenuItem value={NEW_DESIGNATION_SENTINEL} sx={{ fontStyle: 'italic' }}>+ Create New Designation…</MenuItem>
+                    </TextField>
+                  )
+                )}
               </Box>
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -506,6 +596,36 @@ const Employees: React.FC = () => {
             >
               {deleteMutation.isPending ? 'Deactivating…' : 'Deactivate'}
             </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Invite link result (shown once, right after creating an employee) */}
+        <Dialog open={!!inviteLink} onClose={() => setInviteLink(null)} maxWidth="sm" fullWidth>
+          <DialogTitle>Employee Created</DialogTitle>
+          <DialogContent>
+            <Alert severity="success" sx={{ mb: 2 }}>
+              Send this invite link to the new employee - it lets them see their details and set their own
+              username and password. It won't be shown again.
+            </Alert>
+            <TextField
+              fullWidth
+              value={inviteLink ?? ''}
+              size="small"
+              InputProps={{
+                readOnly: true,
+                endAdornment: (
+                  <IconButton
+                    size="small"
+                    onClick={() => { if (inviteLink) { navigator.clipboard.writeText(inviteLink); toast.success('Copied'); } }}
+                  >
+                    <CopyIcon fontSize="small" />
+                  </IconButton>
+                ),
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setInviteLink(null)} variant="contained">Done</Button>
           </DialogActions>
         </Dialog>
       </Box>
