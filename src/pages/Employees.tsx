@@ -33,9 +33,12 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  DeleteForever as DeleteForeverIcon,
   Search as SearchIcon,
   PersonOff as PersonOffIcon,
   ContentCopy as CopyIcon,
+  CheckCircle as ActivateIcon,
+  MailOutlined as InviteIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { employeeService, rbacService, getErrorMessage } from '../services/api';
@@ -178,6 +181,38 @@ const Employees: React.FC = () => {
     },
   });
 
+  const activateMutation = useMutation({
+    mutationFn: employeeService.activate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success('Employee reactivated - their login works again');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to reactivate employee')),
+  });
+
+  const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<Employee | null>(null);
+  const permanentDeleteMutation = useMutation({
+    mutationFn: employeeService.permanentDelete,
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success(result?.message ?? 'Employee permanently deleted');
+      setPermanentDeleteTarget(null);
+    },
+    onError: (err: any) => {
+      toast.error(getErrorMessage(err, 'Failed to permanently delete employee'));
+      setPermanentDeleteTarget(null);
+    },
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: employeeService.resendInvite,
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setInviteLink(result.invite_link);
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to resend invite')),
+  });
+
   const filtered = useMemo(() => {
     if (!search.trim()) return employees as Employee[];
     const q = search.toLowerCase();
@@ -231,7 +266,7 @@ const Employees: React.FC = () => {
     setNewDesignationName('');
   };
 
-  const colCount = isAdmin ? 8 : 7;
+  const colCount = isAdmin ? 9 : 8;
   const editingEmployee = editingId ? (employees as Employee[]).find((e) => e.id === editingId) : null;
 
   return (
@@ -298,6 +333,7 @@ const Employees: React.FC = () => {
                   <TableCell>Position</TableCell>
                   <TableCell>Seniority</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Login</TableCell>
                   {isAdmin && <TableCell align="right">Actions</TableCell>}
                 </TableRow>
               </TableHead>
@@ -357,6 +393,12 @@ const Employees: React.FC = () => {
                           sx={{ fontWeight: 500 }}
                         />
                       </TableCell>
+                      <TableCell>
+                        {employee.invite_status === 'invited' && <Chip label="Invited" color="warning" size="small" variant="outlined" />}
+                        {employee.invite_status === 'expired' && <Chip label="Expired" color="error" size="small" variant="outlined" />}
+                        {employee.invite_status === 'accepted' && <Chip label="Accepted" color="success" size="small" variant="outlined" />}
+                        {!employee.invite_status && <Typography variant="body2" color="text.disabled">-</Typography>}
+                      </TableCell>
                       {isAdmin && (
                         <TableCell align="right">
                           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
@@ -365,16 +407,51 @@ const Employees: React.FC = () => {
                                 <EditIcon sx={{ fontSize: 16 }} />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Deactivate">
-                              <IconButton
-                                size="small"
-                                onClick={() => setDeleteTarget(employee)}
-                                color="error"
-                                disabled={!employee.is_active}
-                              >
-                                <DeleteIcon sx={{ fontSize: 16 }} />
-                              </IconButton>
-                            </Tooltip>
+                            {(employee.invite_status === 'invited' || employee.invite_status === 'expired') && (
+                              <Tooltip title="Copy a fresh invite link">
+                                <IconButton
+                                  size="small"
+                                  color="info"
+                                  disabled={resendInviteMutation.isPending}
+                                  onClick={() => resendInviteMutation.mutate(employee.id)}
+                                >
+                                  <InviteIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                            {employee.is_active ? (
+                              <Tooltip title="Deactivate - blocks their login">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setDeleteTarget(employee)}
+                                  color="error"
+                                >
+                                  <DeleteIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              </Tooltip>
+                            ) : (
+                              <>
+                                <Tooltip title="Reactivate - restores their login">
+                                  <IconButton
+                                    size="small"
+                                    color="success"
+                                    disabled={activateMutation.isPending}
+                                    onClick={() => activateMutation.mutate(employee.id)}
+                                  >
+                                    <ActivateIcon sx={{ fontSize: 16 }} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Delete permanently - cannot be undone">
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => setPermanentDeleteTarget(employee)}
+                                  >
+                                    <DeleteForeverIcon sx={{ fontSize: 16 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              </>
+                            )}
                           </Box>
                         </TableCell>
                       )}
@@ -585,7 +662,7 @@ const Employees: React.FC = () => {
             <Typography variant="body2" color="text.secondary">
               Are you sure you want to deactivate{' '}
               <strong>{deleteTarget?.first_name} {deleteTarget?.last_name}</strong>?
-              They will no longer be able to access the system.
+              Their login will be blocked immediately - you can reactivate it later from this page.
             </Typography>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -601,9 +678,52 @@ const Employees: React.FC = () => {
           </DialogActions>
         </Dialog>
 
+        {/* Permanent delete confirmation dialog (only reachable once an employee is already deactivated) */}
+        <Dialog open={!!permanentDeleteTarget} onClose={() => setPermanentDeleteTarget(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ pb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  bgcolor: '#FEF2F2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <DeleteForeverIcon sx={{ fontSize: 18, color: 'error.main' }} />
+              </Box>
+              Delete Permanently
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="error" sx={{ mb: 2 }}>This cannot be undone.</Alert>
+            <Typography variant="body2" color="text.secondary">
+              Permanently delete <strong>{permanentDeleteTarget?.first_name} {permanentDeleteTarget?.last_name}</strong> and
+              their login? Their timesheets, leave, attendance, and assignments will be deleted too. If they have
+              related records elsewhere (approvals, vouchers, invoices, etc.) this will be rejected - deactivate
+              them instead in that case.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setPermanentDeleteTarget(null)} color="inherit">Cancel</Button>
+            <Button
+              variant="contained"
+              color="error"
+              disabled={permanentDeleteMutation.isPending}
+              onClick={() => permanentDeleteTarget && permanentDeleteMutation.mutate(permanentDeleteTarget.id)}
+            >
+              {permanentDeleteMutation.isPending ? 'Deleting…' : 'Delete Permanently'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         {/* Invite link result (shown once, right after creating an employee) */}
         <Dialog open={!!inviteLink} onClose={() => setInviteLink(null)} maxWidth="sm" fullWidth>
-          <DialogTitle>Employee Created</DialogTitle>
+          <DialogTitle>Invite Link</DialogTitle>
           <DialogContent>
             <Alert severity="success" sx={{ mb: 2 }}>
               Send this invite link to the new employee - it lets them see their details and set their own
@@ -613,16 +733,18 @@ const Employees: React.FC = () => {
               fullWidth
               value={inviteLink ?? ''}
               size="small"
-              InputProps={{
-                readOnly: true,
-                endAdornment: (
-                  <IconButton
-                    size="small"
-                    onClick={() => { if (inviteLink) { navigator.clipboard.writeText(inviteLink); toast.success('Copied'); } }}
-                  >
-                    <CopyIcon fontSize="small" />
-                  </IconButton>
-                ),
+              slotProps={{
+                input: {
+                  readOnly: true,
+                  endAdornment: (
+                    <IconButton
+                      size="small"
+                      onClick={() => { if (inviteLink) { navigator.clipboard.writeText(inviteLink); toast.success('Copied'); } }}
+                    >
+                      <CopyIcon fontSize="small" />
+                    </IconButton>
+                  ),
+                },
               }}
             />
           </DialogContent>

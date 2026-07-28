@@ -219,17 +219,19 @@ const AcceptInvitation: React.FC = () => {
                   size="medium"
                   helperText={usernameStatus.checked ? (usernameStatus.available ? 'Available' : (usernameStatus.reason || 'Already taken')) : 'At least 3 alphanumeric characters. You can also log in with your email.'}
                   error={usernameStatus.checked && !usernameStatus.available}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <PersonAddIcon color="action" />
-                      </InputAdornment>
-                    ),
-                    endAdornment: usernameStatus.checked ? (
-                      <InputAdornment position="end">
-                        {usernameStatus.available ? <CheckCircleIcon color="success" fontSize="small" /> : <CancelIcon color="error" fontSize="small" />}
-                      </InputAdornment>
-                    ) : undefined,
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <PersonAddIcon color="action" />
+                        </InputAdornment>
+                      ),
+                      endAdornment: usernameStatus.checked ? (
+                        <InputAdornment position="end">
+                          {usernameStatus.available ? <CheckCircleIcon color="success" fontSize="small" /> : <CancelIcon color="error" fontSize="small" />}
+                        </InputAdornment>
+                      ) : undefined,
+                    },
                   }}
                 />
                 <TextField
@@ -242,19 +244,21 @@ const AcceptInvitation: React.FC = () => {
                   margin="normal"
                   size="medium"
                   helperText="At least 8 characters, with uppercase, lowercase, and a number"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LockIcon color="action" />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                          {showPassword ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LockIcon color="action" />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                            {showPassword ? <VisibilityOff /> : <Visibility />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    },
                   }}
                 />
                 <TextField
@@ -266,12 +270,14 @@ const AcceptInvitation: React.FC = () => {
                   required
                   margin="normal"
                   size="medium"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LockIcon color="action" />
-                      </InputAdornment>
-                    ),
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LockIcon color="action" />
+                        </InputAdornment>
+                      ),
+                    },
                   }}
                 />
 

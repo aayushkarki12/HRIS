@@ -324,6 +324,21 @@ export const employeeService = {
     const response = await api.delete(`/employees/${id}`);
     return response.data;
   },
+
+  activate: async (id: number) => {
+    const response = await api.put(`/employees/${id}/activate`);
+    return response.data;
+  },
+
+  permanentDelete: async (id: number) => {
+    const response = await api.delete(`/employees/${id}/permanent`);
+    return response.data;
+  },
+
+  resendInvite: async (id: number): Promise<{ invite_link: string }> => {
+    const response = await api.post(`/employees/${id}/resend-invite`);
+    return response.data;
+  },
 };
 
 // ============ RESOURCE SERVICE ============

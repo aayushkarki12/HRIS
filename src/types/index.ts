@@ -57,6 +57,8 @@ export interface Employee {
   is_active: boolean;
   user_id: number;
   user?: User;
+  seniority_level_id?: number | null;
+  invite_status?: 'invited' | 'expired' | 'accepted' | null;
   created_at: string;
   updated_at: string;
 }

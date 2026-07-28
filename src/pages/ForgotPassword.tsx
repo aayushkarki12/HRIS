@@ -117,12 +117,14 @@ const ForgotPassword: React.FC = () => {
                 margin="normal"
                 size="medium"
                 helperText="Same subdomain you use to log in (e.g. 'default')"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <BusinessIcon color="action" />
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <BusinessIcon color="action" />
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
               <TextField
@@ -134,12 +136,14 @@ const ForgotPassword: React.FC = () => {
                 required
                 margin="normal"
                 size="medium"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <EmailIcon color="action" />
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EmailIcon color="action" />
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
 

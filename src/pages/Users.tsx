@@ -282,13 +282,15 @@ const Users: React.FC = () => {
               <TextField
                 fullWidth
                 value={resultPassword}
-                InputProps={{
-                  readOnly: true,
-                  endAdornment: (
-                    <IconButton onClick={() => { navigator.clipboard.writeText(resultPassword); toast.success('Copied'); }} size="small">
-                      <CopyIcon fontSize="small" />
-                    </IconButton>
-                  ),
+                slotProps={{
+                  input: {
+                    readOnly: true,
+                    endAdornment: (
+                      <IconButton onClick={() => { navigator.clipboard.writeText(resultPassword); toast.success('Copied'); }} size="small">
+                        <CopyIcon fontSize="small" />
+                      </IconButton>
+                    ),
+                  },
                 }}
               />
             </Box>
