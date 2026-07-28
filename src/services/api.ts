@@ -1367,6 +1367,23 @@ export const rbacService = {
     const response = await api.delete(`/approval-limits/${id}`);
     return response.data;
   },
+
+  getDepartments: async () => {
+    const response = await api.get('/departments');
+    return response.data;
+  },
+  createDepartment: async (data: { name: string }) => {
+    const response = await api.post('/departments', data);
+    return response.data;
+  },
+  updateDepartment: async (id: number, data: { name: string }) => {
+    const response = await api.put(`/departments/${id}`, data);
+    return response.data;
+  },
+  deleteDepartment: async (id: number) => {
+    const response = await api.delete(`/departments/${id}`);
+    return response.data;
+  },
 };
 
 

@@ -42,7 +42,6 @@ import { useAuth } from '../context/AuthContext';
 import { Employee } from '../types';
 
 const employeeSchema = z.object({
-  employee_id: z.string().min(2, 'Employee ID is required'),
   first_name: z.string().min(2, 'First name is required'),
   last_name: z.string().min(2, 'Last name is required'),
   email: z.string().email('Invalid email address'),
@@ -89,6 +88,12 @@ const Employees: React.FC = () => {
     enabled: isAdmin,
   });
   const seniorityName = (id?: number | null) => (seniorityLevels as any[]).find((l) => l.id === id)?.name;
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['rbac-departments'],
+    queryFn: () => rbacService.getDepartments(),
+    enabled: isAdmin,
+  });
 
   const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
@@ -166,7 +171,6 @@ const Employees: React.FC = () => {
 
   const handleEdit = (employee: Employee) => {
     setEditingId(employee.id);
-    setValue('employee_id', employee.employee_id);
     setValue('first_name', employee.first_name);
     setValue('last_name', employee.last_name);
     setValue('email', employee.email);
@@ -187,6 +191,7 @@ const Employees: React.FC = () => {
   };
 
   const colCount = isAdmin ? 8 : 7;
+  const editingEmployee = editingId ? (employees as Employee[]).find((e) => e.id === editingId) : null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
@@ -350,23 +355,21 @@ const Employees: React.FC = () => {
 
         {/* Add / Edit dialog */}
         <Dialog open={isModalOpen} onClose={handleCloseModal} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ pb: 1 }}>
+          <DialogTitle sx={{ pb: editingEmployee ? 0 : 1 }}>
             {editingId ? 'Edit Employee' : 'Add Employee'}
+            {editingEmployee && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontFamily: 'monospace' }}>
+                {editingEmployee.employee_id}
+              </Typography>
+            )}
           </DialogTitle>
           <form onSubmit={handleSubmit(onSubmit)}>
             <DialogContent sx={{ pt: 1 }}>
               {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+              {!editingId && (
+                <Alert severity="info" sx={{ mb: 2 }}>Employee ID is generated automatically (e.g. EMP0001).</Alert>
+              )}
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                <TextField
-                  fullWidth
-                  label="Employee ID"
-                  {...register('employee_id')}
-                  error={!!errors.employee_id}
-                  helperText={errors.employee_id?.message}
-                  size="small"
-                  disabled={!!editingId}
-                  sx={{ gridColumn: '1 / -1' }}
-                />
                 <TextField
                   fullWidth
                   label="First Name"
@@ -404,12 +407,21 @@ const Employees: React.FC = () => {
                 />
                 <TextField
                   fullWidth
+                  select
                   label="Department"
+                  defaultValue=""
                   {...register('department')}
                   error={!!errors.department}
                   helperText={errors.department?.message}
                   size="small"
-                />
+                >
+                  {editingEmployee?.department && !(departments as any[]).some((d) => d.name === editingEmployee.department) && (
+                    <MenuItem value={editingEmployee.department}>{editingEmployee.department} (not in list)</MenuItem>
+                  )}
+                  {(departments as any[]).map((d) => (
+                    <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
+                  ))}
+                </TextField>
                 <TextField
                   fullWidth
                   label="Position"
