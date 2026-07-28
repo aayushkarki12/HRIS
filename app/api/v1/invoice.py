@@ -5,7 +5,8 @@ from typing import List, Optional
 from datetime import datetime, date
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_admin_user, get_current_manager_user, get_current_tenant
+from ...core.dependencies import get_current_manager_user, get_current_tenant
+from ...core.permissions import require_permission, require_permission_with_limit, PermissionContext
 from ...core.audit import record_audit_log
 from ...core.voucher_service import attach_voucher
 from ...models.user import User
@@ -21,6 +22,8 @@ from ...schemas.invoice import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
+
+MANAGE = require_permission("invoice.manage")
 
 
 def _load_invoice(db, invoice_id, tenant_id):
@@ -99,11 +102,11 @@ def get_invoices(
 @router.post("/", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 def create_invoice(
     data: InvoiceCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Create a new invoice (admin only)."""
+    """Create a new invoice (admin/invoice.manage only)."""
     try:
         if data.project_id:
             project = db.query(Project).filter(
@@ -179,7 +182,7 @@ def get_invoice(
 @router.put("/{invoice_id}/send", response_model=InvoiceResponse)
 def send_invoice(
     invoice_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -262,17 +265,24 @@ def send_invoice(
 def record_payment(
     invoice_id: int,
     data: PaymentCreate,
-    current_user: User = Depends(get_current_admin_user),
+    ctx: PermissionContext = Depends(require_permission_with_limit("invoice.approve")),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
     """Record a payment against an invoice."""
+    current_user = ctx.user
     try:
         invoice = _load_invoice(db, invoice_id, tenant.id)
         if not invoice:
             raise HTTPException(status_code=404, detail="Invoice not found")
         if invoice.status in ["draft", "cancelled"]:
             raise HTTPException(status_code=400, detail=f"Cannot record payment for {invoice.status} invoice")
+
+        if ctx.limit is not None and data.amount > ctx.limit:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This payment ({data.amount:.2f}) exceeds your approval limit ({ctx.limit:.2f}) - ask someone more senior to record it"
+            )
 
         outstanding = invoice.total_amount - invoice.amount_paid
         if data.amount > outstanding + 0.01:
@@ -363,7 +373,7 @@ def record_payment(
 @router.put("/{invoice_id}/cancel", response_model=InvoiceResponse)
 def cancel_invoice(
     invoice_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -391,7 +401,7 @@ def cancel_invoice(
 @router.delete("/{invoice_id}")
 def delete_invoice(
     invoice_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
