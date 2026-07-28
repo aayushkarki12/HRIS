@@ -594,6 +594,11 @@ def update_employee(
             "employment_type": "Employment Status",
         }
         update_data = employee_data.model_dump(exclude_unset=True)
+        # Not a column on Employee - only controls the career_change audit
+        # entry's timestamp below (see EmployeeUpdate.effective_date), so pop
+        # it out before the setattr loop rather than trying to assign it onto
+        # the model.
+        effective_date = update_data.pop("effective_date", None)
         changes = []
         for field, label in tracked_fields.items():
             if field in update_data and update_data[field] != getattr(employee, field):
@@ -605,8 +610,16 @@ def update_employee(
             setattr(employee, key, value)
 
         if changes:
+            # If the admin gave an effective_date, timestamp the audit entry
+            # (and therefore where it lands on the history timeline) at that
+            # date instead of "now" - lets a promotion recorded today be
+            # backdated or scheduled for a future effective date.
+            occurred_at = (
+                datetime.combine(effective_date, datetime.min.time(), tzinfo=timezone.utc)
+                if effective_date else None
+            )
             record_audit_log(db, tenant.id, current_user.id, "career_change", "employee", employee.id,
-                              "; ".join(changes))
+                              "; ".join(changes), occurred_at=occurred_at)
 
         db.commit()
         db.refresh(employee)

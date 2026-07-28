@@ -59,6 +59,13 @@ class EmployeeUpdate(BaseModel):
     seniority_level_id: Optional[int] = None
     # Admin-only in practice - see EmployeeBase.employment_type.
     employment_type: Optional[str] = Field(None, pattern="^(full_time|probation)$")
+    # NOT a column on Employee - purely controls the timestamp of the
+    # resulting "career_change" audit-log entry (see update_employee), so a
+    # promotion/status change recorded today can be effective-dated to a
+    # different day (e.g. "promoted, effective 2026-08-01") and still sort
+    # correctly into GET /employees/{id}/history. Omit to timestamp as "now",
+    # exactly as before this field existed.
+    effective_date: Optional[date] = None
     # Self-service fields
     profile_picture: Optional[str] = None
     date_of_birth: Optional[date] = None
