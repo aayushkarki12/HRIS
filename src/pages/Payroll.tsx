@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -28,6 +28,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
+  Edit as EditIcon,
   Refresh as RefreshIcon,
   Delete as DeleteIcon,
   CheckCircle as ProcessIcon,
@@ -39,16 +40,44 @@ import { useAuth } from '../context/AuthContext';
 
 const fmt = (n: number) => `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Pre-filled when setting up a new salary - a placeholder the admin should
+// verify/adjust against current SSF rules, not an asserted-correct rate.
+// Mirrors HRIS_backend app/schemas/payroll.py::DEFAULT_SSF_PERCENT.
+const DEFAULT_SSF_PERCENT = '10';
+
+const emptySalaryForm = {
+  employee_id: '',
+  base_salary: '',
+  bonus: '0',
+  ssf_percent: DEFAULT_SSF_PERCENT,
+  other_deductions: '0',
+  effective_date: new Date().toISOString().split('T')[0],
+};
+
 const Payroll: React.FC = () => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState(0);
   const [expandedRun, setExpandedRun] = useState<number | null>(null);
 
-  // Salary Structure Dialog
+  // Salary Structure Dialog (create or edit)
   const [salaryModalOpen, setSalaryModalOpen] = useState(false);
-  const [salaryForm, setSalaryForm] = useState({ employee_id: '', base_salary: '', effective_date: new Date().toISOString().split('T')[0] });
+  const [editingSalaryId, setEditingSalaryId] = useState<number | null>(null);
+  const [salaryForm, setSalaryForm] = useState(emptySalaryForm);
   const [salaryError, setSalaryError] = useState('');
+
+  // Live preview of SSF amount / total deductions / net pay as the admin types,
+  // using the same formula the backend computes on the response.
+  const salaryPreview = useMemo(() => {
+    const base = Number(salaryForm.base_salary) || 0;
+    const bonus = Number(salaryForm.bonus) || 0;
+    const ssfPercent = Number(salaryForm.ssf_percent) || 0;
+    const otherDeductions = Number(salaryForm.other_deductions) || 0;
+    const ssfAmount = Math.round(base * (ssfPercent / 100) * 100) / 100;
+    const totalDeductions = Math.round((ssfAmount + otherDeductions) * 100) / 100;
+    const netPay = Math.round((base + bonus - totalDeductions) * 100) / 100;
+    return { ssfAmount, totalDeductions, netPay };
+  }, [salaryForm]);
 
   // Payroll Run Dialog
   const [runModalOpen, setRunModalOpen] = useState(false);
@@ -77,17 +106,36 @@ const Payroll: React.FC = () => {
     queryFn: employeeService.getAll,
   });
 
+  const closeSalaryModal = () => {
+    setSalaryModalOpen(false);
+    setEditingSalaryId(null);
+    setSalaryForm(emptySalaryForm);
+    setSalaryError('');
+  };
+
   const createSalaryMutation = useMutation({
     mutationFn: (data: any) => payrollService.createSalaryStructure(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salaryStructures'] });
       toast.success('Salary structure created');
-      setSalaryModalOpen(false);
-      setSalaryForm({ employee_id: '', base_salary: '', effective_date: new Date().toISOString().split('T')[0] });
-      setSalaryError('');
+      closeSalaryModal();
     },
     onError: (error: any) => {
       const msg = getErrorMessage(error, 'Failed to create salary structure');
+      toast.error(msg);
+      setSalaryError(msg);
+    },
+  });
+
+  const updateSalaryMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => payrollService.updateSalaryStructure(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salaryStructures'] });
+      toast.success('Salary structure updated');
+      closeSalaryModal();
+    },
+    onError: (error: any) => {
+      const msg = getErrorMessage(error, 'Failed to update salary structure');
       toast.error(msg);
       setSalaryError(msg);
     },
@@ -179,8 +227,9 @@ const Payroll: React.FC = () => {
           { label: 'Draft', value: payrollRuns?.filter((r: any) => r.status === 'draft').length || 0, color: '#e74c3c' },
           { label: 'Processed', value: payrollRuns?.filter((r: any) => r.status === 'processed').length || 0, color: '#2ecc71' },
         ] : [
-          { label: 'My Salary', value: salaryStructures?.find((s: any) => s.is_active) ? `$${salaryStructures.find((s: any) => s.is_active).base_salary.toLocaleString()}` : 'Not Set', color: '#667eea' },
-          { label: 'My Payslips', value: myPayslips?.length || 0, color: '#2ecc71' },
+          { label: 'My Base Salary', value: salaryStructures?.find((s: any) => s.is_active) ? fmt(salaryStructures.find((s: any) => s.is_active).base_salary) : 'Not Set', color: '#667eea' },
+          { label: 'My Net Pay', value: salaryStructures?.find((s: any) => s.is_active) ? fmt(salaryStructures.find((s: any) => s.is_active).net_pay ?? 0) : 'Not Set', color: '#2ecc71' },
+          { label: 'My Payslips', value: myPayslips?.length || 0, color: '#f39c12' },
         ]).map((stat: any) => (
           <Paper key={stat.label} sx={{ p: 2, flex: { xs: '1 1 100%', sm: '1 1 calc(25% - 12px)' }, borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
             <Typography variant="caption" sx={{ color: 'text.secondary', textTransform: 'uppercase', fontWeight: 500 }}>{stat.label}</Typography>
@@ -356,10 +405,16 @@ const Payroll: React.FC = () => {
         <>
           {isAdmin && (
             <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setSalaryModalOpen(true)}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setSalaryForm(emptySalaryForm); setEditingSalaryId(null); setSalaryModalOpen(true); }}>
                 Add Salary
               </Button>
             </Box>
+          )}
+
+          {!isAdmin && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              This is your salary breakdown: base pay plus any bonus, minus SSF and other deductions, equals your net pay ("total in hand").
+            </Alert>
           )}
 
           <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
@@ -368,15 +423,19 @@ const Payroll: React.FC = () => {
                 <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
                   <TableCell><strong>Employee</strong></TableCell>
                   <TableCell align="right"><strong>Base Salary</strong></TableCell>
-                  <TableCell><strong>Currency</strong></TableCell>
+                  <TableCell align="right"><strong>Bonus</strong></TableCell>
+                  <TableCell align="right"><strong>SSF Deduction</strong></TableCell>
+                  <TableCell align="right"><strong>Other Deductions</strong></TableCell>
+                  <TableCell align="right"><strong>Net Pay (Total in Hand)</strong></TableCell>
                   <TableCell><strong>Effective Date</strong></TableCell>
                   <TableCell><strong>Status</strong></TableCell>
+                  {isAdmin && <TableCell align="right"><strong>Actions</strong></TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {(!salaryStructures || salaryStructures.length === 0) ? (
                   <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                    <TableCell colSpan={isAdmin ? 9 : 8} align="center" sx={{ py: 4 }}>
                       <Typography color="textSecondary">No salary structures defined</Typography>
                     </TableCell>
                   </TableRow>
@@ -384,11 +443,42 @@ const Payroll: React.FC = () => {
                   <TableRow key={salary.id} hover>
                     <TableCell>{getEmployeeName(salary.employee_id)}</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 700 }}>{fmt(salary.base_salary)}</TableCell>
-                    <TableCell>{salary.currency}</TableCell>
+                    <TableCell align="right">{fmt(salary.bonus ?? 0)}</TableCell>
+                    <TableCell align="right" sx={{ color: '#e74c3c' }}>
+                      {fmt(salary.ssf_amount ?? 0)}
+                      <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
+                        ({salary.ssf_percent ?? 0}%)
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: '#e74c3c' }}>{fmt(salary.other_deductions ?? 0)}</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#2ecc71' }}>{fmt(salary.net_pay ?? 0)}</TableCell>
                     <TableCell>{new Date(salary.effective_date).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <Chip label={salary.is_active ? 'Active' : 'Inactive'} color={salary.is_active ? 'success' : 'default'} size="small" />
                     </TableCell>
+                    {isAdmin && (
+                      <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setEditingSalaryId(salary.id);
+                            setSalaryForm({
+                              employee_id: String(salary.employee_id),
+                              base_salary: String(salary.base_salary),
+                              bonus: String(salary.bonus ?? 0),
+                              ssf_percent: String(salary.ssf_percent ?? DEFAULT_SSF_PERCENT),
+                              other_deductions: String(salary.other_deductions ?? 0),
+                              effective_date: salary.effective_date,
+                            });
+                            setSalaryError('');
+                            setSalaryModalOpen(true);
+                          }}
+                          title="Edit"
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -397,9 +487,9 @@ const Payroll: React.FC = () => {
         </>
       )}
 
-      {/* Salary Structure Dialog */}
-      <Dialog open={salaryModalOpen} onClose={() => setSalaryModalOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Salary Structure</DialogTitle>
+      {/* Salary Structure Dialog (create or edit) */}
+      <Dialog open={salaryModalOpen} onClose={closeSalaryModal} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingSalaryId ? 'Edit Salary Structure' : 'Add Salary Structure'}</DialogTitle>
         <DialogContent>
           {salaryError && <Alert severity="error" sx={{ mb: 2 }}>{salaryError}</Alert>}
           <TextField
@@ -407,6 +497,7 @@ const Payroll: React.FC = () => {
             value={salaryForm.employee_id}
             onChange={(e) => setSalaryForm({ ...salaryForm, employee_id: e.target.value })}
             margin="normal" size="small"
+            disabled={!!editingSalaryId}
           >
             <MenuItem value="">Select Employee</MenuItem>
             {employees?.filter((e: any) => e.is_active).map((emp: any) => (
@@ -421,23 +512,70 @@ const Payroll: React.FC = () => {
             slotProps={{ htmlInput: { min: 0, step: 100 } }}
           />
           <TextField
+            fullWidth label="Bonus" name="bonus" type="number"
+            value={salaryForm.bonus}
+            onChange={(e) => setSalaryForm({ ...salaryForm, bonus: e.target.value })}
+            margin="normal" size="small"
+            helperText="One-off or recurring bonus, added on top of base salary"
+            slotProps={{ htmlInput: { min: 0, step: 100 } }}
+          />
+          <TextField
+            fullWidth label="SSF Deduction %" name="ssf_percent" type="number"
+            value={salaryForm.ssf_percent}
+            onChange={(e) => setSalaryForm({ ...salaryForm, ssf_percent: e.target.value })}
+            margin="normal" size="small"
+            helperText={`Social Security Fund contribution, as % of base salary. Default (${DEFAULT_SSF_PERCENT}%) is a placeholder - verify/adjust against current SSF rules before relying on it.`}
+            slotProps={{ htmlInput: { min: 0, max: 100, step: 0.5 } }}
+          />
+          <TextField
+            fullWidth label="Other Deductions" name="other_deductions" type="number"
+            value={salaryForm.other_deductions}
+            onChange={(e) => setSalaryForm({ ...salaryForm, other_deductions: e.target.value })}
+            margin="normal" size="small"
+            helperText="Any other flat deduction - loan repayment, advance, etc."
+            slotProps={{ htmlInput: { min: 0, step: 100 } }}
+          />
+          <TextField
             fullWidth label="Effective Date" name="effective_date" type="date"
             value={salaryForm.effective_date}
             onChange={(e) => setSalaryForm({ ...salaryForm, effective_date: e.target.value })}
             margin="normal" size="small"
             slotProps={{ inputLabel: { shrink: true } }}
           />
+
+          {salaryForm.base_salary && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              <Typography variant="body2">SSF Deduction: {fmt(salaryPreview.ssfAmount)}</Typography>
+              <Typography variant="body2">Total Deductions: {fmt(salaryPreview.totalDeductions)}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>Net Pay (Total in Hand): {fmt(salaryPreview.netPay)}</Typography>
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSalaryModalOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={!salaryForm.employee_id || !salaryForm.base_salary || createSalaryMutation.isPending}
-            onClick={() => createSalaryMutation.mutate({
-              employee_id: Number(salaryForm.employee_id),
-              base_salary: Number(salaryForm.base_salary),
-              effective_date: salaryForm.effective_date,
-            })}
+          <Button onClick={closeSalaryModal}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!salaryForm.employee_id || !salaryForm.base_salary || createSalaryMutation.isPending || updateSalaryMutation.isPending}
+            onClick={() => {
+              const payload = {
+                employee_id: Number(salaryForm.employee_id),
+                base_salary: Number(salaryForm.base_salary),
+                bonus: Number(salaryForm.bonus) || 0,
+                ssf_percent: Number(salaryForm.ssf_percent) || 0,
+                other_deductions: Number(salaryForm.other_deductions) || 0,
+                effective_date: salaryForm.effective_date,
+              };
+              if (editingSalaryId) {
+                const { employee_id, ...updateData } = payload;
+                updateSalaryMutation.mutate({ id: editingSalaryId, data: updateData });
+              } else {
+                createSalaryMutation.mutate(payload);
+              }
+            }}
           >
-            {createSalaryMutation.isPending ? 'Creating...' : 'Create'}
+            {createSalaryMutation.isPending || updateSalaryMutation.isPending
+              ? 'Saving...'
+              : editingSalaryId ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>

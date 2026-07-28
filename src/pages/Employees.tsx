@@ -60,6 +60,7 @@ const employeeSchema = z.object({
   joining_date: z.string().min(1, 'Join date is required'),
   seniority_level_id: z.string().optional(),
   role_id: z.string().optional(),
+  employment_type: z.enum(['full_time', 'probation']),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -117,11 +118,13 @@ const Employees: React.FC = () => {
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
+    defaultValues: { employment_type: 'full_time' },
   });
 
   const positionValue = watch('position');
   const departmentValue = watch('department');
   const seniorityLevelIdValue = watch('seniority_level_id');
+  const employmentTypeValue = watch('employment_type');
 
   const createRoleMutation = useMutation({
     mutationFn: (name: string) => rbacService.createRole({ name, permission_keys: [] }),
@@ -265,6 +268,7 @@ const Employees: React.FC = () => {
     setValue('position', employee.position);
     setValue('joining_date', employee.joining_date.split('T')[0]);
     setValue('seniority_level_id', (employee as any).seniority_level_id ? String((employee as any).seniority_level_id) : '');
+    setValue('employment_type', (employee as any).employment_type === 'probation' ? 'probation' : 'full_time');
     setIsModalOpen(true);
     setError('');
   };
@@ -278,7 +282,7 @@ const Employees: React.FC = () => {
     setNewDesignationName('');
   };
 
-  const colCount = isAdmin ? 10 : 9;
+  const colCount = isAdmin ? 11 : 10;
   const editingEmployee = editingId ? (employees as Employee[]).find((e) => e.id === editingId) : null;
 
   return (
@@ -345,6 +349,7 @@ const Employees: React.FC = () => {
                   <TableCell>Position</TableCell>
                   <TableCell>Projects</TableCell>
                   <TableCell>Seniority</TableCell>
+                  <TableCell>Employment</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Login</TableCell>
                   {isAdmin && <TableCell align="right">Actions</TableCell>}
@@ -408,6 +413,14 @@ const Employees: React.FC = () => {
                         ) : (
                           <Typography variant="body2" color="text.disabled">-</Typography>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={employee.employment_type === 'probation' ? 'Probation' : 'Full-time'}
+                          color={employee.employment_type === 'probation' ? 'warning' : 'default'}
+                          size="small"
+                          variant="outlined"
+                        />
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -583,6 +596,20 @@ const Employees: React.FC = () => {
                   sx={{ gridColumn: '1 / -1' }}
                   slotProps={{ inputLabel: { shrink: true } }}
                 />
+                <TextField
+                  fullWidth
+                  select
+                  label="Employment Type"
+                  value={employmentTypeValue ?? 'full_time'}
+                  onChange={(e) => setValue('employment_type', e.target.value as 'full_time' | 'probation', { shouldValidate: true })}
+                  error={!!errors.employment_type}
+                  helperText={errors.employment_type?.message || 'Probation employees get a reduced leave allocation until confirmed'}
+                  size="small"
+                  sx={{ gridColumn: '1 / -1' }}
+                >
+                  <MenuItem value="full_time">Full-time</MenuItem>
+                  <MenuItem value="probation">Probation</MenuItem>
+                </TextField>
                 <TextField
                   fullWidth
                   select
