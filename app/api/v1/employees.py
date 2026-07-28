@@ -19,6 +19,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
+# Bank/SSN data should only ever be visible to the employee themself or to
+# admin/manager roles - not to any coworker who happens to share a
+# department or be able to enumerate IDs.
+_SENSITIVE_FIELDS = ("bank_account", "bank_routing", "social_security")
+
+
+def _to_response(employee: Employee, viewer: User) -> EmployeeResponse:
+    resp = EmployeeResponse.model_validate(employee)
+    is_privileged = viewer.role in ("admin", "manager")
+    is_self = employee.user_id == viewer.id
+    if not is_privileged and not is_self:
+        for field in _SENSITIVE_FIELDS:
+            setattr(resp, field, None)
+    return resp
+
 # ============================================
 # STATIC ROUTES - MUST COME FIRST
 # ============================================
@@ -116,7 +131,18 @@ async def upload_my_avatar(
     db: Session = Depends(get_db),
 ):
     """Upload a profile picture for the current user."""
-    if file.content_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+    # Extension is derived from this validated content-type mapping, never
+    # from the client-supplied filename - avatars are served from a public
+    # static mount, so trusting a client filename's extension here would let
+    # an attacker upload real HTML/script under an "image" content-type
+    # header and have it served (and executed) as that file type.
+    avatar_extensions = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+    }
+    if file.content_type not in avatar_extensions:
         raise HTTPException(status_code=400, detail="Only JPEG, PNG, WebP, or GIF images are allowed")
 
     employee = db.query(Employee).filter(
@@ -126,9 +152,9 @@ async def upload_my_avatar(
     if not employee:
         raise HTTPException(status_code=404, detail="Employee profile not found")
 
-    ext = os.path.splitext(file.filename or "avatar.jpg")[1] or ".jpg"
+    ext = avatar_extensions[file.content_type]
     filename = f"{uuid.uuid4().hex}{ext}"
-    avatars_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "uploads", "avatars")
+    avatars_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads", "avatars")
     os.makedirs(avatars_dir, exist_ok=True)
     file_path = os.path.join(avatars_dir, filename)
 
@@ -146,6 +172,7 @@ async def upload_my_avatar(
     return {"url": url}
 
 
+@router.get("", response_model=List[EmployeeResponse], include_in_schema=False)
 @router.get("/", response_model=List[EmployeeResponse])
 def get_employees(
     skip: int = Query(0, ge=0),
@@ -186,7 +213,7 @@ def get_employees(
             )
 
         employees = query.offset(skip).limit(limit).all()
-        return employees
+        return [_to_response(e, current_user) for e in employees]
     except Exception as e:
         logger.error(f"Error in get_employees: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -262,16 +289,35 @@ def get_employee(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Get employee by ID for the current tenant."""
+    """Get employee by ID for the current tenant.
+
+    Non-admin/manager users may only view their own record or a colleague's
+    record in their own department - and even then, bank/SSN fields are
+    redacted unless the viewer is the employee themself or admin/manager.
+    """
     try:
         employee = db.query(Employee).filter(
             Employee.id == employee_id,
             Employee.tenant_id == tenant.id
         ).first()
-        
+
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
-        return employee
+
+        if current_user.role not in ("admin", "manager") and employee.user_id != current_user.id:
+            me = db.query(Employee).filter(
+                Employee.user_id == current_user.id,
+                Employee.tenant_id == tenant.id
+            ).first()
+            if not me or me.department != employee.department:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to view this employee"
+                )
+
+        return _to_response(employee, current_user)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in get_employee: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

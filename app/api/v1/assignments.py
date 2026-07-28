@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
+@router.get("", response_model=List[AssignmentResponse], include_in_schema=False)
 @router.get("/", response_model=List[AssignmentResponse])
 def get_assignments(
     skip: int = Query(0, ge=0),

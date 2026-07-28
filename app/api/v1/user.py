@@ -20,10 +20,10 @@ def get_users(
     db: Session = Depends(get_db)
 ):
     """
-    Get all users (admin only).
+    Get all users in the caller's own tenant (admin only).
     """
-    query = db.query(User)
-    
+    query = db.query(User).filter(User.tenant_id == current_user.tenant_id)
+
     if search:
         query = query.filter(
             (User.username.contains(search)) | 
@@ -53,15 +53,15 @@ def get_user(
     db: Session = Depends(get_db)
 ):
     """
-    Get user by ID (admin or self).
+    Get user by ID (admin or self, same tenant only).
     """
     if current_user.id != user_id and current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view this user"
         )
-    
-    user = db.query(User).filter(User.id == user_id).first()
+
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -80,15 +80,15 @@ def update_user(
     db: Session = Depends(get_db)
 ):
     """
-    Update user (admin or self).
+    Update user (admin or self, same tenant only).
     """
     if current_user.id != user_id and current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this user"
         )
-    
-    user = db.query(User).filter(User.id == user_id).first()
+
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -150,7 +150,7 @@ def change_password(
             detail="Not authorized to change this user's password"
         )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -199,7 +199,7 @@ def admin_reset_password(
     For cases the self-service email flow can't cover - e.g. the user has
     lost access to their registered email entirely.
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -228,9 +228,9 @@ def delete_user(
     db: Session = Depends(get_db)
 ):
     """
-    Delete user (admin only).
+    Delete user (admin only, same tenant).
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -257,9 +257,9 @@ def activate_user(
     db: Session = Depends(get_db)
 ):
     """
-    Activate a user (admin only).
+    Activate a user (admin only, same tenant).
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -279,9 +279,9 @@ def deactivate_user(
     db: Session = Depends(get_db)
 ):
     """
-    Deactivate a user (admin only).
+    Deactivate a user (admin only, same tenant).
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

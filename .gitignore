@@ -12,6 +12,7 @@ wheels/
 # Secrets
 .env
 .env.local
+*.swp
 
 # Uploaded user content
 uploads/

@@ -149,6 +149,11 @@ def approve_voucher(
         raise HTTPException(status_code=404, detail="Voucher not found")
     if voucher.status != "submitted":
         raise HTTPException(status_code=400, detail=f"Cannot approve a voucher in '{voucher.status}' status")
+    if voucher.prepared_by == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You prepared this voucher and cannot also approve it - ask another admin to review it"
+        )
 
     voucher.status = "approved"
     voucher.approved_by = current_user.id

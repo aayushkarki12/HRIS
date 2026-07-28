@@ -9,6 +9,10 @@ from ...models.tenant import Tenant
 from ...models.project import Project
 from ...models.employee import Employee
 from ...models.project_member import ProjectMember
+from ...models.assignment import Assignment
+from ...models.assignment_project import AssignmentProject
+from ...models.invoice import Invoice
+from ...models.timesheet import TimesheetEntry
 from ...schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     ProjectMemberCreate, ProjectMemberResponse,
@@ -16,6 +20,7 @@ from ...schemas.project import (
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
+@router.get("", response_model=List[ProjectResponse], include_in_schema=False)
 @router.get("/", response_model=List[ProjectResponse])
 def get_projects(
     skip: int = Query(0, ge=0),
@@ -120,6 +125,14 @@ def delete_project(
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # Detach everything that references this project first so the delete
+    # always succeeds — the referencing rows (assignments, invoices,
+    # timesheet entries) are kept, only their tie to this project is removed.
+    db.query(AssignmentProject).filter(AssignmentProject.project_id == project_id).delete()
+    db.query(Assignment).filter(Assignment.project_id == project_id).update({"project_id": None})
+    db.query(Invoice).filter(Invoice.project_id == project_id).update({"project_id": None})
+    db.query(TimesheetEntry).filter(TimesheetEntry.project_id == project_id).update({"project_id": None})
 
     db.delete(project)
     db.commit()
