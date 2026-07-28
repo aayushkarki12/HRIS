@@ -6,6 +6,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import date, datetime, timedelta, timezone
 
@@ -20,6 +21,8 @@ from ...models.tenant import Tenant
 from ...models.employee import Employee
 from ...models.rbac import Role
 from ...models.password_reset_token import PasswordResetToken
+from ...models.refresh_token import RefreshToken
+from ...models.audit_log import AuditLog
 from ...schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 
 logger = logging.getLogger(__name__)
@@ -132,8 +135,26 @@ def _generate_employee_id(db: Session, tenant: Tenant) -> str:
         seq += 1
 
 
+def _invite_status(db: Session, user_id: Optional[int]) -> Optional[str]:
+    """"invited" (link sent, not yet used), "expired" (link sent, never
+    used, past its expiry), "accepted" (link used, or no invite record at
+    all - e.g. self-registered or linked to a pre-existing user), or None if
+    there's no login at all."""
+    if not user_id:
+        return None
+    token = db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user_id, PasswordResetToken.is_invite.is_(True)
+    ).order_by(PasswordResetToken.created_at.desc()).first()
+    if not token or token.used:
+        return "accepted"
+    if token.expires_at < datetime.now(timezone.utc):
+        return "expired"
+    return "invited"
+
+
 def _to_response(db: Session, employee: Employee, viewer: User) -> EmployeeResponse:
     resp = EmployeeResponse.model_validate(employee)
+    resp.invite_status = _invite_status(db, employee.user_id)
     is_privileged = viewer.role in ("admin", "manager") or user_has_permission(db, viewer, "employees.view_sensitive")
     is_self = employee.user_id == viewer.id
     if not is_privileged and not is_self:
@@ -395,6 +416,7 @@ def create_employee(
         db.refresh(db_employee)
         resp = EmployeeResponse.model_validate(db_employee)
         resp.invite_link = invite_link
+        resp.invite_status = _invite_status(db, db_employee.user_id)
         return resp
     except HTTPException:
         db.rollback()
@@ -484,7 +506,11 @@ def delete_employee(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Deactivate employee for the current tenant (admin/employees.edit only)."""
+    """Deactivate employee for the current tenant (admin/employees.edit only).
+    Also deactivates and logs out their linked login - previously this only
+    flipped Employee.is_active, which the login itself never checks, so a
+    "deactivated" employee could still sign in. Reversible via
+    PUT /{employee_id}/activate."""
     try:
         employee = db.query(Employee).filter(
             Employee.id == employee_id,
@@ -493,11 +519,151 @@ def delete_employee(
 
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
+        if employee.user_id == current_user.id:
+            raise HTTPException(status_code=400, detail="You cannot deactivate your own account this way")
 
         employee.is_active = False
+        if employee.user_id:
+            user = db.query(User).filter(User.id == employee.user_id).first()
+            if user:
+                user.is_active = False
+                db.query(RefreshToken).filter(
+                    RefreshToken.user_id == user.id, RefreshToken.revoked.is_(False)
+                ).update({"revoked": True})
+
+        record_audit_log(db, tenant.id, current_user.id, "deactivate", "employee", employee.id,
+                          f"Deactivated {employee.first_name} {employee.last_name}")
         db.commit()
-        return {"message": "Employee deactivated successfully"}
+        return {"message": "Employee deactivated - their login is now blocked"}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(f"Error in delete_employee: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{employee_id}/activate", response_model=EmployeeResponse)
+def activate_employee(
+    employee_id: int,
+    current_user: User = Depends(EDIT),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Reactivate a previously-deactivated employee and their login."""
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id, Employee.tenant_id == tenant.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    employee.is_active = True
+    if employee.user_id:
+        user = db.query(User).filter(User.id == employee.user_id).first()
+        if user:
+            user.is_active = True
+
+    record_audit_log(db, tenant.id, current_user.id, "activate", "employee", employee.id,
+                      f"Reactivated {employee.first_name} {employee.last_name}")
+    db.commit()
+    db.refresh(employee)
+    return _to_response(db, employee, current_user)
+
+
+@router.post("/{employee_id}/resend-invite")
+def resend_invite(
+    employee_id: int,
+    current_user: User = Depends(EDIT),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Mint a fresh invite link for an employee whose login hasn't been set
+    up yet (or who lost the original one) - the original raw token can't be
+    recovered since only its hash is stored, so this issues a new one and
+    invalidates any still-pending ones."""
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id, Employee.tenant_id == tenant.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if not employee.user_id:
+        raise HTTPException(status_code=400, detail="This employee has no login to invite")
+
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == employee.user_id,
+        PasswordResetToken.is_invite.is_(True),
+        PasswordResetToken.used.is_(False),
+    ).update({"used": True})
+
+    raw_token = generate_refresh_token()
+    db.add(PasswordResetToken(
+        user_id=employee.user_id,
+        tenant_id=tenant.id,
+        token_hash=hash_refresh_token(raw_token),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=EMPLOYEE_INVITE_TOKEN_EXPIRE_MINUTES),
+        used=False,
+        is_invite=True,
+    ))
+    record_audit_log(db, tenant.id, current_user.id, "resend_invite", "employee", employee.id,
+                      f"Resent invite link for {employee.first_name} {employee.last_name}")
+    db.commit()
+
+    return {"invite_link": f"{settings.FRONTEND_URL}/invitation?token={raw_token}"}
+
+
+@router.delete("/{employee_id}/permanent")
+def permanently_delete_employee(
+    employee_id: int,
+    current_user: User = Depends(EDIT),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Permanently remove an employee (and their login, if any) - unlike
+    DELETE /{employee_id} this can't be undone. Only safe for employees with
+    no real activity: assignments/leaves/timesheets/attendances/documents
+    cascade-delete with the Employee row, but anything they approved, posted,
+    or created elsewhere (vouchers, journal entries, expense claims, ...)
+    still references their user_id with no cascade, so the delete is
+    rejected rather than silently orphaning or wiping unrelated financial/
+    audit records - deactivate those employees instead."""
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id, Employee.tenant_id == tenant.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if employee.user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own employee record")
+
+    name = f"{employee.first_name} {employee.last_name}"
+    user_id = employee.user_id
+
+    try:
+        if user_id:
+            db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user_id).delete()
+            db.query(RefreshToken).filter(RefreshToken.user_id == user_id).delete()
+            # Audit trail is deliberately kept (not deleted) with the actor
+            # reference cleared - see AuditLog's own docstring.
+            db.query(AuditLog).filter(AuditLog.user_id == user_id).update({"user_id": None})
+
+        record_audit_log(db, tenant.id, current_user.id, "delete", "employee", employee.id,
+                          f"Permanently deleted {name}")
+
+        db.delete(employee)
+        db.flush()
+
+        if user_id:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                db.delete(user)
+                db.flush()
+
+        db.commit()
+        return {"message": f"{name} was permanently deleted"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name} has related records (approvals, vouchers, timesheets, etc.) and can't be permanently "
+                   f"deleted. Deactivate them instead.",
+        )

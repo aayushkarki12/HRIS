@@ -82,6 +82,9 @@ class EmployeeResponse(EmployeeBase):
     # invite link for the new hire to set their password. Never
     # retrievable again afterwards (there's no getter for it).
     invite_link: Optional[str] = None
+    # "invited" | "expired" | "accepted" | None (no login at all) - see
+    # employees.py::_invite_status.
+    invite_status: Optional[str] = None
 
     class Config:
         from_attributes = True
