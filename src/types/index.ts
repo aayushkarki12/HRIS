@@ -37,6 +37,7 @@ export interface User {
   last_name: string;
   username?: string;
   role: 'admin' | 'user' | 'manager';
+  role_id?: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

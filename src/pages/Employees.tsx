@@ -27,6 +27,7 @@ import {
   InputAdornment,
   Avatar,
   Tooltip,
+  MenuItem,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -36,7 +37,7 @@ import {
   PersonOff as PersonOffIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
-import { employeeService, getErrorMessage } from '../services/api';
+import { employeeService, rbacService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Employee } from '../types';
 
@@ -49,6 +50,7 @@ const employeeSchema = z.object({
   department: z.string().min(2, 'Department is required'),
   position: z.string().min(2, 'Position is required'),
   joining_date: z.string().min(1, 'Join date is required'),
+  seniority_level_id: z.string().optional(),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -80,6 +82,13 @@ const Employees: React.FC = () => {
     queryKey: ['employees'],
     queryFn: employeeService.getAll,
   });
+
+  const { data: seniorityLevels = [] } = useQuery({
+    queryKey: ['rbac-seniority-levels'],
+    queryFn: () => rbacService.getSeniorityLevels(),
+    enabled: isAdmin,
+  });
+  const seniorityName = (id?: number | null) => (seniorityLevels as any[]).find((l) => l.id === id)?.name;
 
   const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
@@ -146,10 +155,12 @@ const Employees: React.FC = () => {
 
   const onSubmit = (data: EmployeeFormData) => {
     setError('');
+    const { seniority_level_id, ...rest } = data;
+    const payload = { ...rest, seniority_level_id: seniority_level_id ? Number(seniority_level_id) : null };
     if (editingId) {
-      updateMutation.mutate({ id: editingId, data });
+      updateMutation.mutate({ id: editingId, data: payload });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(payload);
     }
   };
 
@@ -163,6 +174,7 @@ const Employees: React.FC = () => {
     setValue('department', employee.department);
     setValue('position', employee.position);
     setValue('joining_date', employee.joining_date.split('T')[0]);
+    setValue('seniority_level_id', (employee as any).seniority_level_id ? String((employee as any).seniority_level_id) : '');
     setIsModalOpen(true);
     setError('');
   };
@@ -174,7 +186,7 @@ const Employees: React.FC = () => {
     setError('');
   };
 
-  const colCount = isAdmin ? 7 : 6;
+  const colCount = isAdmin ? 8 : 7;
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
@@ -238,6 +250,7 @@ const Employees: React.FC = () => {
                   <TableCell>Email</TableCell>
                   <TableCell>Department</TableCell>
                   <TableCell>Position</TableCell>
+                  <TableCell>Seniority</TableCell>
                   <TableCell>Status</TableCell>
                   {isAdmin && <TableCell align="right">Actions</TableCell>}
                 </TableRow>
@@ -282,6 +295,13 @@ const Employees: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">{employee.position}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        {seniorityName((employee as any).seniority_level_id) ? (
+                          <Chip label={seniorityName((employee as any).seniority_level_id)} size="small" variant="outlined" />
+                        ) : (
+                          <Typography variant="body2" color="text.disabled">-</Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -409,6 +429,22 @@ const Employees: React.FC = () => {
                   sx={{ gridColumn: '1 / -1' }}
                   slotProps={{ inputLabel: { shrink: true } }}
                 />
+                <TextField
+                  fullWidth
+                  select
+                  label="Seniority Level"
+                  defaultValue=""
+                  {...register('seniority_level_id')}
+                  error={!!errors.seniority_level_id}
+                  helperText={errors.seniority_level_id?.message || 'Affects approval limits, e.g. how large an invoice a Senior Accountant can approve'}
+                  size="small"
+                  sx={{ gridColumn: '1 / -1' }}
+                >
+                  <MenuItem value="">None</MenuItem>
+                  {(seniorityLevels as any[]).map((level) => (
+                    <MenuItem key={level.id} value={String(level.id)}>{level.name}</MenuItem>
+                  ))}
+                </TextField>
               </Box>
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2 }}>
