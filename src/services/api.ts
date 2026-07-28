@@ -178,6 +178,11 @@ export const authService = {
     const response = await api.post('/auth/reset-password', { token, new_password: newPassword });
     return response.data;
   },
+
+  getMyPermissions: async (): Promise<{ permissions: string[]; role_id: number | null }> => {
+    const response = await api.get('/auth/me/permissions');
+    return response.data;
+  },
 };
 
 // ============ USER SERVICE (admin: role & account management) ============
@@ -189,6 +194,11 @@ export const userService = {
 
   updateRole: async (id: number, role: 'admin' | 'manager' | 'user') => {
     const response = await api.put(`/users/${id}`, { role });
+    return response.data;
+  },
+
+  updateRoleId: async (id: number, role_id: number) => {
+    const response = await api.put(`/users/${id}`, { role_id });
     return response.data;
   },
 
@@ -1296,6 +1306,65 @@ export const budgetService = {
   },
   getDashboard: async (fiscal_year?: number) => {
     const response = await api.get('/budgets/reports/dashboard', { params: { fiscal_year } });
+    return response.data;
+  },
+};
+
+// ============ RBAC SERVICE (roles, permissions, seniority levels, approval limits) ============
+export const rbacService = {
+  getPermissions: async () => {
+    const response = await api.get('/permissions');
+    return response.data;
+  },
+
+  getRoles: async () => {
+    const response = await api.get('/roles');
+    return response.data;
+  },
+  createRole: async (data: { name: string; description?: string; permission_keys: string[] }) => {
+    const response = await api.post('/roles', data);
+    return response.data;
+  },
+  updateRole: async (id: number, data: { name?: string; description?: string; permission_keys?: string[] }) => {
+    const response = await api.put(`/roles/${id}`, data);
+    return response.data;
+  },
+  deleteRole: async (id: number) => {
+    const response = await api.delete(`/roles/${id}`);
+    return response.data;
+  },
+
+  getSeniorityLevels: async () => {
+    const response = await api.get('/seniority-levels');
+    return response.data;
+  },
+  createSeniorityLevel: async (data: { name: string; rank: number }) => {
+    const response = await api.post('/seniority-levels', data);
+    return response.data;
+  },
+  updateSeniorityLevel: async (id: number, data: { name?: string; rank?: number }) => {
+    const response = await api.put(`/seniority-levels/${id}`, data);
+    return response.data;
+  },
+  deleteSeniorityLevel: async (id: number) => {
+    const response = await api.delete(`/seniority-levels/${id}`);
+    return response.data;
+  },
+
+  getApprovalLimits: async () => {
+    const response = await api.get('/approval-limits');
+    return response.data;
+  },
+  createApprovalLimit: async (data: { role_id?: number | null; seniority_level_id?: number | null; permission_key: string; max_amount: number }) => {
+    const response = await api.post('/approval-limits', data);
+    return response.data;
+  },
+  updateApprovalLimit: async (id: number, max_amount: number) => {
+    const response = await api.put(`/approval-limits/${id}`, { max_amount });
+    return response.data;
+  },
+  deleteApprovalLimit: async (id: number) => {
+    const response = await api.delete(`/approval-limits/${id}`);
     return response.data;
   },
 };

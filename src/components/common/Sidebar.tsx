@@ -31,6 +31,7 @@ import {
   Schedule as TimesheetIcon,
   AccountBalance as AccountingIcon,
   ManageAccounts as UsersIcon,
+  AdminPanelSettings as RolesIcon,
   ExpandLess,
   ExpandMore,
   Assignment as AssignmentIcon,
@@ -543,6 +544,16 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
                 >
                   <ListItemIcon><UsersIcon sx={{ fontSize: 18 }} /></ListItemIcon>
                   <ListItemText primary="Users & Roles" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton
+                  onClick={() => handleNavigation('/roles-permissions')}
+                  selected={isSelected('/roles-permissions')}
+                  sx={topItemSx}
+                >
+                  <ListItemIcon><RolesIcon sx={{ fontSize: 18 }} /></ListItemIcon>
+                  <ListItemText primary="Roles & Permissions" />
                 </ListItemButton>
               </ListItem>
               <ListItem disablePadding>

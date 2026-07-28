@@ -29,6 +29,7 @@ import ExpenseClaims from './pages/ExpenseClaims';
 import Invoices from './pages/Invoices';
 import FinancialReports from './pages/FinancialReports';
 import Users from './pages/Users';
+import RolesPermissions from './pages/RolesPermissions';
 import Vouchers from './pages/Vouchers';
 import VoucherForm from './pages/VoucherForm';
 import VoucherDetail from './pages/VoucherDetail';
@@ -82,6 +83,7 @@ function App() {
             <Route path="invoices" element={<RequireRole role="manager"><Invoices /></RequireRole>} />
             <Route path="financial-reports" element={<RequireRole role="manager"><FinancialReports /></RequireRole>} />
             <Route path="users" element={<RequireRole role="admin"><Users /></RequireRole>} />
+            <Route path="roles-permissions" element={<RequireRole role="admin"><RolesPermissions /></RequireRole>} />
             <Route path="tenant-settings" element={<RequireRole role="admin"><TenantSettings /></RequireRole>} />
             <Route path="profile" element={<Profile />} />
           </Route>
