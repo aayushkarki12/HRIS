@@ -8,6 +8,7 @@ from datetime import datetime, date
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_admin_user, get_current_manager_user, get_current_tenant
+from ...core.permissions import require_permission
 from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.tenant import Tenant
@@ -28,6 +29,8 @@ from ...schemas.accounting import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/accounting", tags=["accounting"])
+
+JOURNAL_ENTRY_MANAGE = require_permission("journal_entry.manage")
 
 # Tally-style voucher numbering series - each voucher type gets its own sequence.
 VOUCHER_PREFIXES = {
@@ -324,7 +327,7 @@ def get_journal_entries(
 @router.post("/journal-entries", response_model=JournalEntryResponse, status_code=status.HTTP_201_CREATED)
 def create_journal_entry(
     entry_data: JournalEntryCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(JOURNAL_ENTRY_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -449,7 +452,7 @@ def get_journal_entry(
 def update_journal_entry(
     entry_id: int,
     entry_data: JournalEntryUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(JOURNAL_ENTRY_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -520,7 +523,7 @@ def update_journal_entry(
 @router.put("/journal-entries/{entry_id}/post", response_model=JournalEntryResponse)
 def post_journal_entry(
     entry_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(JOURNAL_ENTRY_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -576,7 +579,7 @@ def post_journal_entry(
 @router.delete("/journal-entries/{entry_id}")
 def delete_journal_entry(
     entry_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(JOURNAL_ENTRY_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):

@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_tenant
+from ...core.permissions import user_has_permission
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.audit_log import AuditLog
@@ -76,7 +77,7 @@ def get_audit_logs(
     db: Session = Depends(get_db)
 ):
     """View the audit trail for this tenant (managers and admins only)."""
-    if current_user.role not in ("admin", "manager"):
+    if current_user.role not in ("admin", "manager") and not user_has_permission(db, current_user, "audit_log.view"):
         return []
 
     query = db.query(AuditLog).options(joinedload(AuditLog.user)).filter(AuditLog.tenant_id == tenant.id)
@@ -93,7 +94,7 @@ def get_audit_log_meta(
     db: Session = Depends(get_db)
 ):
     """Distinct actions and entity types actually present in this tenant's audit log, for filter dropdowns."""
-    if current_user.role not in ("admin", "manager"):
+    if current_user.role not in ("admin", "manager") and not user_has_permission(db, current_user, "audit_log.view"):
         return {"actions": [], "entity_types": [], "modules": MODULES}
 
     actions = [r[0] for r in db.query(AuditLog.action).filter(AuditLog.tenant_id == tenant.id).distinct().all()]
@@ -115,7 +116,7 @@ def export_audit_logs(
     db: Session = Depends(get_db)
 ):
     """Export the (filtered) audit trail as CSV."""
-    if current_user.role not in ("admin", "manager"):
+    if current_user.role not in ("admin", "manager") and not user_has_permission(db, current_user, "audit_log.view"):
         return StreamingResponse(io.StringIO(""), media_type="text/csv")
 
     query = db.query(AuditLog).options(joinedload(AuditLog.user)).filter(AuditLog.tenant_id == tenant.id)

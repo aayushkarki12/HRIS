@@ -39,7 +39,8 @@ def _storage_key(file_url: str) -> str:
 
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
+from ...core.dependencies import get_current_active_user, get_current_tenant, get_current_employee
+from ...core.permissions import require_permission
 from ...core.storage import storage
 from ...models.user import User
 from ...models.tenant import Tenant
@@ -213,11 +214,11 @@ def delete_document(
 @router.put("/{document_id}/verify")
 def verify_document(
     document_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(require_permission("documents.verify")),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Verify a document (admin only)."""
+    """Verify a document (admin/documents.verify only)."""
     document = db.query(Document).filter(
         Document.id == document_id,
         Document.tenant_id == tenant.id
