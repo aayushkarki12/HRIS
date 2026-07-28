@@ -4,7 +4,6 @@ from datetime import datetime, date
 import re
 
 class EmployeeBase(BaseModel):
-    employee_id: str = Field(..., min_length=3, max_length=20)
     first_name: str = Field(..., min_length=1, max_length=50)
     last_name: str = Field(..., min_length=1, max_length=50)
     email: EmailStr
@@ -30,7 +29,12 @@ class EmployeeBase(BaseModel):
 
 
 class EmployeeCreate(EmployeeBase):
+    # Auto-generated server-side (see employees.py::_generate_employee_id) if
+    # omitted - admins can still supply one explicitly to match an existing
+    # numbering scheme.
+    employee_id: Optional[str] = Field(None, min_length=3, max_length=20)
     user_id: Optional[int] = None
+    seniority_level_id: Optional[int] = None
 
 
 class EmployeeUpdate(BaseModel):
@@ -64,6 +68,7 @@ class EmployeeUpdate(BaseModel):
 
 class EmployeeResponse(EmployeeBase):
     id: int
+    employee_id: str
     user_id: Optional[int] = None
     is_active: bool
     seniority_level_id: Optional[int] = None

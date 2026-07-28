@@ -12,11 +12,13 @@ from ...models.user import User
 from ...models.employee import Employee
 from ...models.tenant import Tenant
 from ...models.rbac import Permission, Role, RolePermission, SeniorityLevel, ApprovalLimit
+from ...models.department import Department
 from ...schemas.rbac import (
     PermissionResponse, RoleCreate, RoleUpdate, RoleResponse,
     SeniorityLevelCreate, SeniorityLevelUpdate, SeniorityLevelResponse,
     ApprovalLimitCreate, ApprovalLimitUpdate, ApprovalLimitResponse,
 )
+from ...schemas.department import DepartmentCreate, DepartmentUpdate, DepartmentResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["roles & permissions"])
@@ -43,6 +45,14 @@ def _limit_to_response(limit: ApprovalLimit) -> ApprovalLimitResponse:
     resp = ApprovalLimitResponse.model_validate(limit)
     resp.role_name = limit.role.name if limit.role else None
     resp.seniority_level_name = limit.seniority_level.name if limit.seniority_level else None
+    return resp
+
+
+def _department_to_response(db: Session, department: Department) -> DepartmentResponse:
+    resp = DepartmentResponse.model_validate(department)
+    resp.employee_count = db.query(Employee).filter(
+        Employee.tenant_id == department.tenant_id, Employee.department == department.name
+    ).count()
     return resp
 
 
@@ -325,3 +335,94 @@ def delete_approval_limit(
     db.delete(limit)
     db.commit()
     return {"message": "Approval limit deleted successfully - this permission is now unlimited for that combination"}
+
+
+# ============ DEPARTMENTS ============
+
+@router.get("/departments", response_model=List[DepartmentResponse])
+def list_departments(
+    current_user: User = Depends(MANAGE),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    departments = db.query(Department).filter(Department.tenant_id == tenant.id).order_by(Department.name).all()
+    return [_department_to_response(db, d) for d in departments]
+
+
+@router.post("/departments", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
+def create_department(
+    data: DepartmentCreate,
+    current_user: User = Depends(MANAGE),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    department = Department(tenant_id=tenant.id, name=data.name)
+    db.add(department)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"A department named '{data.name}' already exists")
+    record_audit_log(db, tenant.id, current_user.id, "create", "department", department.id, f"Created department '{department.name}'")
+    db.commit()
+    db.refresh(department)
+    return _department_to_response(db, department)
+
+
+@router.put("/departments/{department_id}", response_model=DepartmentResponse)
+def update_department(
+    department_id: int,
+    data: DepartmentUpdate,
+    current_user: User = Depends(MANAGE),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    department = db.query(Department).filter(Department.id == department_id, Department.tenant_id == tenant.id).first()
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    old_name = department.name
+    department.name = data.name
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"A department named '{data.name}' already exists")
+
+    if old_name != data.name:
+        # Employee.department is a plain string, not a foreign key (see
+        # models/department.py) - renaming here would otherwise silently
+        # orphan every employee record still carrying the old name.
+        db.query(Employee).filter(
+            Employee.tenant_id == tenant.id, Employee.department == old_name
+        ).update({Employee.department: data.name}, synchronize_session=False)
+
+    record_audit_log(db, tenant.id, current_user.id, "update", "department", department.id,
+                      f"Renamed department '{old_name}' to '{data.name}'")
+    db.commit()
+    db.refresh(department)
+    return _department_to_response(db, department)
+
+
+@router.delete("/departments/{department_id}")
+def delete_department(
+    department_id: int,
+    current_user: User = Depends(MANAGE),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    department = db.query(Department).filter(Department.id == department_id, Department.tenant_id == tenant.id).first()
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    in_use = db.query(Employee).filter(Employee.tenant_id == tenant.id, Employee.department == department.name).count()
+    if in_use:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{in_use} employee(s) are still in this department - reassign them before deleting it",
+        )
+
+    record_audit_log(db, tenant.id, current_user.id, "delete", "department", department.id, f"Deleted department '{department.name}'")
+    db.delete(department)
+    db.commit()
+    return {"message": "Department deleted successfully"}

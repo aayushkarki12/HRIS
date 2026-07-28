@@ -32,6 +32,23 @@ def _can_view_all(db: Session, viewer: User) -> bool:
     return viewer.role in ("admin", "manager") or user_has_permission(db, viewer, "employees.view_all")
 
 
+def _generate_employee_id(db: Session, tenant_id: int) -> str:
+    """EMP0001, EMP0002, ... per tenant. Employees are only ever soft-deleted
+    (is_active=False), so the row count is a stable, monotonically increasing
+    starting point; the uniqueness loop below covers the rare case where an
+    earlier employee_id was set explicitly and collides with the next
+    candidate."""
+    seq = db.query(Employee).filter(Employee.tenant_id == tenant_id).count() + 1
+    while True:
+        candidate = f"EMP{seq:04d}"
+        exists = db.query(Employee).filter(
+            Employee.tenant_id == tenant_id, Employee.employee_id == candidate
+        ).first()
+        if not exists:
+            return candidate
+        seq += 1
+
+
 def _to_response(db: Session, employee: Employee, viewer: User) -> EmployeeResponse:
     resp = EmployeeResponse.model_validate(employee)
     is_privileged = viewer.role in ("admin", "manager") or user_has_permission(db, viewer, "employees.view_sensitive")
@@ -261,16 +278,23 @@ def create_employee(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Create a new employee for the current tenant (admin/employees.edit only)."""
+    """Create a new employee for the current tenant (admin/employees.edit only).
+    employee_id is auto-generated (EMP0001, ...) when not explicitly supplied."""
     try:
-        existing = db.query(Employee).filter(
-            Employee.employee_id == employee_data.employee_id,
-            Employee.tenant_id == tenant.id
-        ).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Employee ID already exists")
+        data = employee_data.model_dump(exclude={"employee_id"})
 
-        db_employee = Employee(**employee_data.model_dump(), tenant_id=tenant.id)
+        if employee_data.employee_id:
+            existing = db.query(Employee).filter(
+                Employee.employee_id == employee_data.employee_id,
+                Employee.tenant_id == tenant.id
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Employee ID already exists")
+            employee_id = employee_data.employee_id
+        else:
+            employee_id = _generate_employee_id(db, tenant.id)
+
+        db_employee = Employee(**data, employee_id=employee_id, tenant_id=tenant.id)
         db.add(db_employee)
         db.flush()
 
@@ -280,6 +304,9 @@ def create_employee(
         db.commit()
         db.refresh(db_employee)
         return db_employee
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(f"Error in create_employee: {e}", exc_info=True)
         db.rollback()
