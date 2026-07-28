@@ -599,7 +599,7 @@ const Employees: React.FC = () => {
                 <TextField
                   fullWidth
                   select
-                  label="Employment Type"
+                  label="Employment Status"
                   value={employmentTypeValue ?? 'full_time'}
                   onChange={(e) => setValue('employment_type', e.target.value as 'full_time' | 'probation', { shouldValidate: true })}
                   error={!!errors.employment_type}
