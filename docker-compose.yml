@@ -8,6 +8,6 @@ services:
         VITE_API_URL: ${VITE_API_URL}
     container_name: hris-frontend
     ports:
-      - "3006:3006"
+      - "4002:4002"
     environment:
       VITE_API_URL: ${VITE_API_URL}
