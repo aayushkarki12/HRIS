@@ -16,6 +16,17 @@ class Settings(BaseSettings):
     RESEND_FROM_EMAIL: str = "onboarding@resend.dev"
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # SeaweedFS S3-gateway object storage for employee documents (same
+    # pattern/env-var names as the dossier project's storage.py, so ops only
+    # has to remember one convention). Any S3-compatible backend works since
+    # access is via boto3. When unset, the app falls back to local disk.
+    SEAWEED_S3_ENDPOINT: str = ""
+    SEAWEED_REGION: str = "us-east-1"
+    SEAWEED_ACCESS_KEY: str = ""
+    SEAWEED_SECRET_KEY: str = ""
+    SEAWEED_BUCKET_NAME: str = "hris"
+    PRESIGNED_URL_TTL_SECONDS: int = 300
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]

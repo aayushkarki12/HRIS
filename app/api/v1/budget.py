@@ -160,6 +160,11 @@ def approve_budget(
         raise HTTPException(status_code=404, detail="Budget not found")
     if budget.status != "submitted":
         raise HTTPException(status_code=400, detail="Only a submitted budget can be approved")
+    if budget.created_by == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You created this budget and cannot also approve it - ask another admin to review it"
+        )
     from datetime import datetime
     budget.status = "approved"
     budget.approved_by = current_user.id

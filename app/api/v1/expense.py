@@ -248,6 +248,15 @@ def manager_approve_expense(
         if claim.status != "submitted":
             raise HTTPException(status_code=400, detail="Only submitted claims can be manager-approved")
 
+        own_employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id, Employee.tenant_id == tenant.id
+        ).first()
+        if own_employee and own_employee.id == claim.employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot approve your own expense claim - ask another manager to review it"
+            )
+
         claim.status = "manager_approved"
         claim.manager_approved_by = current_user.id
         claim.manager_approved_at = datetime.now()
@@ -283,6 +292,15 @@ def accounting_approve_expense(
             raise HTTPException(status_code=404, detail="Expense claim not found")
         if claim.status != "manager_approved":
             raise HTTPException(status_code=400, detail="Claim must be manager-approved first")
+
+        own_employee = db.query(Employee).filter(
+            Employee.user_id == current_user.id, Employee.tenant_id == tenant.id
+        ).first()
+        if own_employee and own_employee.id == claim.employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot give accounting approval to your own expense claim - ask another admin to review it"
+            )
 
         claim.status = "accounting_approved"
         claim.accounting_approved_by = current_user.id

@@ -83,10 +83,17 @@ app.include_router(voucher_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")
 app.include_router(budget_router, prefix="/api/v1")
 
-# Serve uploaded files (avatars, etc.)
-_uploads_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
-os.makedirs(_uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_uploads_dir), name="uploads")
+# Avatars are low-sensitivity and rendered via plain <img> tags all over the
+# UI, so they stay on a public static mount. Employee documents (resumes,
+# contracts, IDs) are NOT mounted here on purpose - unlike avatars they can
+# be genuinely sensitive, and serving them from a public, unauthenticated
+# path would bypass every tenant/ownership check the /documents API
+# enforces. Those are served through the authenticated
+# GET /api/v1/documents/{id}/download endpoint instead (see document.py).
+_uploads_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
+_avatars_dir = os.path.join(_uploads_dir, "avatars")
+os.makedirs(_avatars_dir, exist_ok=True)
+app.mount("/uploads/avatars", StaticFiles(directory=_avatars_dir), name="avatars")
 
 @app.get("/")
 def root():

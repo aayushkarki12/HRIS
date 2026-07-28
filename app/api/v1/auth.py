@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta, date, datetime, timezone
@@ -35,6 +35,13 @@ from ...core.email import send_password_reset_email
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 60
 
 logger = logging.getLogger(__name__)
+
+# A bcrypt hash of a fixed, never-used password, computed once at import
+# time. When login is called with a username/email that doesn't exist, we
+# still run a bcrypt comparison against this instead of returning
+# immediately, so the response takes roughly as long as the "wrong password"
+# path and can't be used to tell the two cases apart by timing.
+_DUMMY_PASSWORD_HASH = get_password_hash("not-a-real-account-8f3c1e9a")
 
 
 def _issue_refresh_token(db: Session, user: User, tenant_id: int) -> str:
@@ -158,6 +165,11 @@ def login(
     ).first()
 
     if not user:
+        # No tenant is resolvable for an unknown username/email (audit_logs.tenant_id
+        # is required), so this can't be logged the way a wrong-password attempt
+        # against a known user can - but we still pay the same bcrypt cost below so
+        # the response timing doesn't give away which case this was.
+        verify_password(form_data.password, _DUMMY_PASSWORD_HASH)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -299,12 +311,19 @@ def logout(
 def forgot_password(
     request: Request,
     data: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
     Request a password reset email. Always returns the same generic message
     regardless of whether the email/tenant exists or the send succeeded -
     leaking that information would let an attacker enumerate valid accounts.
+
+    When the account exists, the actual email send happens in a background
+    task *after* the response is returned rather than inline - otherwise the
+    synchronous outbound call to the email provider makes that branch
+    measurably slower than the "no such account" branch, which is itself an
+    account-enumeration side channel via response timing.
     """
     generic_response = {"message": "If an account with that email exists, a password reset link has been sent."}
 
@@ -327,7 +346,7 @@ def forgot_password(
     db.commit()
 
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
-    send_password_reset_email(user.email, user.first_name, reset_link)
+    background_tasks.add_task(send_password_reset_email, user.email, user.first_name, reset_link)
 
     return generic_response
 
