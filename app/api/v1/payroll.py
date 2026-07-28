@@ -7,9 +7,10 @@ from datetime import datetime, date
 
 from ...core.database import get_db
 from ...core.dependencies import (
-    get_current_active_user, get_current_admin_user,
+    get_current_active_user,
     get_current_tenant, get_current_employee
 )
+from ...core.permissions import require_permission, user_has_permission
 from ...core.audit import record_audit_log
 from ...core.voucher_service import attach_voucher
 from ...models.user import User
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
 
+MANAGE = require_permission("payroll.manage")
+
 # ============================================
 # SALARY STRUCTURES
 # ============================================
@@ -39,11 +42,14 @@ def get_salary_structures(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Get salary structures. Admin sees all, regular users see only their own."""
+    """Get salary structures. Only admin/payroll.view_all sees everyone's;
+    a generic manager (without that specific permission) now only sees their
+    own, same as any other employee - broad salary visibility should not be
+    an incidental side effect of team-lead status."""
     try:
         query = db.query(SalaryStructure).filter(SalaryStructure.tenant_id == tenant.id)
 
-        if current_user.role not in ["admin", "manager"]:
+        if current_user.role != "admin" and not user_has_permission(db, current_user, "payroll.view_all"):
             employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
             if not employee:
                 return []
@@ -60,7 +66,7 @@ def get_salary_structures(
 @router.post("/salary-structures", response_model=SalaryStructureResponse, status_code=status.HTTP_201_CREATED)
 def create_salary_structure(
     data: SalaryStructureCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -103,7 +109,7 @@ def create_salary_structure(
 def update_salary_structure(
     structure_id: int,
     data: SalaryStructureUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -136,7 +142,7 @@ def update_salary_structure(
 
 @router.get("/runs", response_model=List[PayrollRunResponse])
 def get_payroll_runs(
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -156,7 +162,7 @@ def get_payroll_runs(
 @router.post("/runs", response_model=PayrollRunResponse, status_code=status.HTTP_201_CREATED)
 def create_payroll_run(
     data: PayrollRunCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -313,7 +319,7 @@ def create_payroll_run(
 @router.get("/runs/{run_id}", response_model=PayrollRunResponse)
 def get_payroll_run(
     run_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -338,7 +344,7 @@ def get_payroll_run(
 @router.put("/runs/{run_id}/process", response_model=PayrollRunResponse)
 def process_payroll_run(
     run_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -467,7 +473,7 @@ def process_payroll_run(
 @router.delete("/runs/{run_id}")
 def delete_payroll_run(
     run_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
