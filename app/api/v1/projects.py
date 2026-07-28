@@ -20,6 +20,7 @@ from ...schemas.project import (
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
+@router.get("", response_model=List[ProjectResponse], include_in_schema=False)
 @router.get("/", response_model=List[ProjectResponse])
 def get_projects(
     skip: int = Query(0, ge=0),

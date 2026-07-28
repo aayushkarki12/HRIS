@@ -16,6 +16,7 @@ router = APIRouter(prefix="/resources", tags=["resources"])
 
 # ─── Collection + search ──────────────────────────────────────────────────────
 
+@router.get("", response_model=List[ResourceResponse], include_in_schema=False)
 @router.get("/", response_model=List[ResourceResponse])
 def get_resources(
     skip: int = Query(0, ge=0),

@@ -172,6 +172,7 @@ async def upload_my_avatar(
     return {"url": url}
 
 
+@router.get("", response_model=List[EmployeeResponse], include_in_schema=False)
 @router.get("/", response_model=List[EmployeeResponse])
 def get_employees(
     skip: int = Query(0, ge=0),

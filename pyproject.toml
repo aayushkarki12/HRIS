@@ -17,6 +17,5 @@ dependencies = [
     "python-jose[cryptography]>=3.5.0",
     "pytz>=2026.2",
     "resend>=2.34.0",
-    "slowapi>=0.1.10",
     "sqlalchemy>=2.0.51",
 ]

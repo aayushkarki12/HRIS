@@ -36,9 +36,4 @@ COPY . .
 EXPOSE 8010
 
 # Run the application
-# --forwarded-allow-ips is scoped to the loopback address, i.e. only a reverse
-# proxy running on the same host is trusted to set X-Forwarded-For/-Proto.
-# "*" would let any client forge their source IP, defeating per-IP rate
-# limiting and poisoning the audit log's recorded IP - if your reverse proxy
-# runs elsewhere, set this to its real IP instead of loopback.
-CMD ["uv", "run", "fastapi", "run", "app/main.py", "--workers", "2", "--host", "0.0.0.0", "--port", "8010", "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1"]
+CMD ["uv", "run", "fastapi", "run", "app/main.py", "--workers", "2", "--host", "0.0.0.0", "--port", "8010"]

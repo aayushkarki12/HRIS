@@ -2,10 +2,7 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 from .core.config import settings
-from .core.limiter import limiter
 from .core.logging_config import setup_logging
 
 setup_logging()
@@ -43,9 +40,8 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Rate limiting - applied per-route via @limiter.limit() decorators (see auth.py)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Rate limiting is handled at the edge (nginx `limit_req`), not in the app -
+# see /etc/nginx/sites-available/hris-api.cantordust.org.conf.
 
 # Configure CORS - explicit origin allow-list only, no wildcard.
 # Set CORS_ORIGINS in .env to override (comma-separated) for staging/production.

@@ -17,7 +17,6 @@ from ...core.security import (
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from ...core.dependencies import get_current_active_user, get_current_tenant
-from ...core.limiter import limiter
 from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.employee import Employee
@@ -60,9 +59,7 @@ def _issue_refresh_token(db: Session, user: User, tenant_id: int) -> str:
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
 def register_user(
-    request: Request,
     user_data: UserCreate,
     db: Session = Depends(get_db)
 ):
@@ -150,7 +147,6 @@ def test_tenant(
     }
 
 @router.post("/login", response_model=Token)
-@limiter.limit("10/minute")
 def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -241,9 +237,7 @@ def get_current_user_info(
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)
-@limiter.limit("30/minute")
 def refresh_access_token(
-    request: Request,
     data: RefreshTokenRequest,
     db: Session = Depends(get_db)
 ):
@@ -307,9 +301,7 @@ def logout(
 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
-@limiter.limit("3/minute")
 def forgot_password(
-    request: Request,
     data: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
@@ -352,9 +344,7 @@ def forgot_password(
 
 
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
-@limiter.limit("10/minute")
 def reset_password(
-    request: Request,
     data: ResetPasswordRequest,
     db: Session = Depends(get_db)
 ):
