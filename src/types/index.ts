@@ -156,7 +156,12 @@ export interface EmployeeUpdate {
   position?: string;
   joining_date?: string;
   is_active?: boolean;
+  seniority_level_id?: number | null;
   employment_type?: 'full_time' | 'probation';
+  // Not a stored field - only controls the timestamp of the resulting
+  // career_change audit-log entry on the backend (see EmployeeUpdate in
+  // HRIS_backend app/schemas/employee.py). Omit for "now".
+  effective_date?: string;
 }
 
 export interface ResourceCreate {
