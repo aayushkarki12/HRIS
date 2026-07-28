@@ -591,7 +591,7 @@ def update_employee(
 
         tracked_fields = {
             "position": "Position", "department": "Department", "seniority_level_id": "Seniority",
-            "employment_type": "Employment Type",
+            "employment_type": "Employment Status",
         }
         update_data = employee_data.model_dump(exclude_unset=True)
         changes = []

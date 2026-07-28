@@ -261,20 +261,31 @@ def create_payroll_run(
             actual_working_days = max(attendance_days, working_days_in_period - leave_days)
 
             daily_rate = base_salary / working_days_in_period if working_days_in_period > 0 else 0
-            gross_salary = daily_rate * actual_working_days
+            gross_salary = round(daily_rate * actual_working_days, 2)
 
-            tax_rate = 0.10
-            tax_deduction = round(gross_salary * tax_rate, 2)
-            insurance_deduction = round(base_salary * 0.02, 2)
-            total_deductions = tax_deduction + insurance_deduction
-            net_salary = round(gross_salary - total_deductions, 2)
-            gross_salary = round(gross_salary, 2)
+            # Bonus is a flat per-period amount, not pro-rated by attendance
+            # like base pay is - matches how a bonus is normally treated
+            # separately from basic salary. SSF is levied on the worked-period
+            # base (gross_salary), not the full nominal monthly base_salary -
+            # this differs from SalaryStructureResponse.ssf_amount, which is a
+            # static reference figure off the full base_salary, not an actual
+            # period calculation. other_deductions (loan/advance/etc.) is
+            # applied in full each period, same as it's documented on the
+            # SalaryStructure model.
+            bonus_amount = round(salary.bonus, 2) if salary else 0.0
+            ssf_percent = salary.ssf_percent if salary else 0.0
+            other_deductions_amount = round(salary.other_deductions, 2) if salary else 0.0
+
+            total_earnings = round(gross_salary + bonus_amount, 2)
+            ssf_deduction = round(gross_salary * (ssf_percent / 100.0), 2)
+            total_deductions = round(ssf_deduction + other_deductions_amount, 2)
+            net_salary = round(total_earnings - total_deductions, 2)
 
             db_payslip = Payslip(
                 payroll_run_id=db_run.id,
                 employee_id=employee.id,
                 base_salary=base_salary,
-                gross_salary=gross_salary,
+                gross_salary=total_earnings,
                 total_deductions=total_deductions,
                 net_salary=net_salary,
                 working_days=actual_working_days,
@@ -288,14 +299,25 @@ def create_payroll_run(
             payslip_lines = [
                 PayslipLine(payslip_id=db_payslip.id, line_type="earning",
                             description="Base Salary", amount=gross_salary, tenant_id=tenant.id),
-                PayslipLine(payslip_id=db_payslip.id, line_type="deduction",
-                            description="Income Tax (10%)", amount=tax_deduction, tenant_id=tenant.id),
-                PayslipLine(payslip_id=db_payslip.id, line_type="deduction",
-                            description="Insurance (2%)", amount=insurance_deduction, tenant_id=tenant.id),
             ]
+            if bonus_amount:
+                payslip_lines.append(
+                    PayslipLine(payslip_id=db_payslip.id, line_type="earning",
+                                description="Bonus", amount=bonus_amount, tenant_id=tenant.id)
+                )
+            if ssf_deduction:
+                payslip_lines.append(
+                    PayslipLine(payslip_id=db_payslip.id, line_type="deduction",
+                                description=f"SSF ({ssf_percent:g}%)", amount=ssf_deduction, tenant_id=tenant.id)
+                )
+            if other_deductions_amount:
+                payslip_lines.append(
+                    PayslipLine(payslip_id=db_payslip.id, line_type="deduction",
+                                description="Other Deductions", amount=other_deductions_amount, tenant_id=tenant.id)
+                )
             db.add_all(payslip_lines)
 
-            run_total_gross += gross_salary
+            run_total_gross += total_earnings
             run_total_deductions += total_deductions
             run_total_net += net_salary
 
