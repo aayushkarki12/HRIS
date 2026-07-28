@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_admin_user, get_current_manager_user, get_current_tenant
+from ...core.permissions import require_permission_with_limit, PermissionContext
 from ...core.audit import record_audit_log
 from ...core.budget_service import compute_actual, variance_status, get_scope_label
 from ...models.user import User
@@ -151,11 +152,14 @@ def submit_budget(
 @router.put("/{budget_id}/approve", response_model=BudgetResponse)
 def approve_budget(
     budget_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    ctx: PermissionContext = Depends(require_permission_with_limit("budget.approve")),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    budget = db.query(Budget).filter(Budget.id == budget_id, Budget.tenant_id == tenant.id).first()
+    current_user = ctx.user
+    budget = db.query(Budget).options(joinedload(Budget.periods)).filter(
+        Budget.id == budget_id, Budget.tenant_id == tenant.id
+    ).first()
     if not budget:
         raise HTTPException(status_code=404, detail="Budget not found")
     if budget.status != "submitted":
@@ -165,6 +169,14 @@ def approve_budget(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You created this budget and cannot also approve it - ask another admin to review it"
         )
+
+    total = round(sum(p.amount for p in budget.periods), 2)
+    if ctx.limit is not None and total > ctx.limit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"This budget ({total:.2f}) exceeds your approval limit ({ctx.limit:.2f}) - ask someone more senior to approve it"
+        )
+
     from datetime import datetime
     budget.status = "approved"
     budget.approved_by = current_user.id
