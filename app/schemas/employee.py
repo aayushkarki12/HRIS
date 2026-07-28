@@ -85,6 +85,14 @@ class EmployeeResponse(EmployeeBase):
     # "invited" | "expired" | "accepted" | None (no login at all) - see
     # employees.py::_invite_status.
     invite_status: Optional[str] = None
+    # Names of projects (ProjectMember) this employee currently belongs to.
+    projects: List[str] = []
 
     class Config:
         from_attributes = True
+
+
+class EmployeeHistoryEntry(BaseModel):
+    date: datetime
+    action: str  # "joined" | "career_change"
+    details: str

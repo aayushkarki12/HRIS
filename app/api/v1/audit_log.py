@@ -34,9 +34,11 @@ ENTITY_TYPE_TO_MODULE = {
 MODULES = sorted(set(ENTITY_TYPE_TO_MODULE.values())) + ["Other"]
 
 
-def _apply_filters(query, entity_type, entity_id, user_id, action, module, start_date, end_date):
+def _apply_filters(query, entity_type, entity_id, user_id, action, module, start_date, end_date, exclude_entity_type=None):
     if entity_type:
         query = query.filter(AuditLog.entity_type == entity_type)
+    if exclude_entity_type:
+        query = query.filter(AuditLog.entity_type != exclude_entity_type)
     if entity_id:
         query = query.filter(AuditLog.entity_id == entity_id)
     if user_id:
@@ -72,16 +74,20 @@ def get_audit_logs(
     module: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    exclude_entity_type: Optional[str] = None,
     current_user: User = Depends(get_current_active_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """View the audit trail for this tenant (managers and admins only)."""
+    """View the audit trail for this tenant (managers and admins only).
+    exclude_entity_type is used by the dashboard's Recent Activity widget to
+    hide routine login/logout ("auth") noise while still showing everything
+    on the full Audit Trail page."""
     if current_user.role not in ("admin", "manager") and not user_has_permission(db, current_user, "audit_log.view"):
         return []
 
     query = db.query(AuditLog).options(joinedload(AuditLog.user)).filter(AuditLog.tenant_id == tenant.id)
-    query = _apply_filters(query, entity_type, entity_id, user_id, action, module, start_date, end_date)
+    query = _apply_filters(query, entity_type, entity_id, user_id, action, module, start_date, end_date, exclude_entity_type)
 
     logs = query.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()
     return [_hydrate(log) for log in logs]

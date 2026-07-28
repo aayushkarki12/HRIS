@@ -50,6 +50,26 @@ from ...schemas.document import DocumentCreate, DocumentUpdate, DocumentResponse
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
+
+@router.get("", response_model=List[DocumentResponse])
+def get_all_documents(
+    current_user: User = Depends(require_permission("documents.verify")),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Every document in the tenant, for review/verification - admin/
+    documents.verify only. Regular employees only ever see their own via
+    GET /documents/my; the frontend picks which one to call based on
+    hasPermission('documents.verify')."""
+    documents = db.query(Document).filter(Document.tenant_id == tenant.id).order_by(Document.created_at.desc()).all()
+    responses = []
+    for doc in documents:
+        resp = DocumentResponse.model_validate(doc)
+        resp.employee_name = doc.employee.full_name if doc.employee else None
+        responses.append(resp)
+    return responses
+
+
 @router.get("/my", response_model=List[DocumentResponse])
 def get_my_documents(
     current_employee: Employee = Depends(get_current_employee),

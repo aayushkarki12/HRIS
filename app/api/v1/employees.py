@@ -19,11 +19,11 @@ from ...core.security import get_password_hash, generate_refresh_token, hash_ref
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
-from ...models.rbac import Role
+from ...models.rbac import Role, SeniorityLevel
 from ...models.password_reset_token import PasswordResetToken
 from ...models.refresh_token import RefreshToken
 from ...models.audit_log import AuditLog
-from ...schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
+from ...schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse, EmployeeHistoryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +135,13 @@ def _generate_employee_id(db: Session, tenant: Tenant) -> str:
         seq += 1
 
 
+def _seniority_name(db: Session, seniority_level_id: Optional[int]) -> Optional[str]:
+    if not seniority_level_id:
+        return None
+    level = db.query(SeniorityLevel).filter(SeniorityLevel.id == seniority_level_id).first()
+    return level.name if level else None
+
+
 def _invite_status(db: Session, user_id: Optional[int]) -> Optional[str]:
     """"invited" (link sent, not yet used), "expired" (link sent, never
     used, past its expiry), "accepted" (link used, or no invite record at
@@ -155,6 +162,7 @@ def _invite_status(db: Session, user_id: Optional[int]) -> Optional[str]:
 def _to_response(db: Session, employee: Employee, viewer: User) -> EmployeeResponse:
     resp = EmployeeResponse.model_validate(employee)
     resp.invite_status = _invite_status(db, employee.user_id)
+    resp.projects = [pm.project.name for pm in employee.project_memberships if pm.project]
     is_privileged = viewer.role in ("admin", "manager") or user_has_permission(db, viewer, "employees.view_sensitive")
     is_self = employee.user_id == viewer.id
     if not is_privileged and not is_self:
@@ -298,6 +306,32 @@ async def upload_my_avatar(
     db.commit()
     db.refresh(employee)
     return {"url": url}
+
+
+@router.delete("/me/avatar")
+def delete_my_avatar(
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Remove the current user's profile picture, reverting to initials."""
+    employee = db.query(Employee).filter(
+        Employee.user_id == current_user.id,
+        Employee.tenant_id == tenant.id,
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee profile not found")
+
+    if employee.profile_picture:
+        avatars_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads", "avatars")
+        filename = employee.profile_picture.rsplit("/", 1)[-1]
+        file_path = os.path.join(avatars_dir, filename)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+    employee.profile_picture = None
+    db.commit()
+    return {"message": "Profile picture removed"}
 
 
 @router.get("", response_model=List[EmployeeResponse])
@@ -470,6 +504,69 @@ def get_employee(
         logger.error(f"Error in get_employee: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/{employee_id}/history", response_model=List[EmployeeHistoryEntry])
+def get_employee_history(
+    employee_id: int,
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Career timeline: when they joined, plus every position/department/
+    seniority change since (recorded by update_employee as a "career_change"
+    audit log entry). Same authorization as GET /{employee_id} - self, own
+    department, or admin/manager/employees.view_all.
+
+    Salary/compensation history isn't tracked here - that lives in the
+    separate SalaryStructure/payroll system, which this doesn't touch."""
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id, Employee.tenant_id == tenant.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    if not _can_view_all(db, current_user) and employee.user_id != current_user.id:
+        me = db.query(Employee).filter(
+            Employee.user_id == current_user.id, Employee.tenant_id == tenant.id
+        ).first()
+        if not me or me.department != employee.department:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this employee")
+
+    logs = db.query(AuditLog).filter(
+        AuditLog.tenant_id == tenant.id,
+        AuditLog.entity_type == "employee",
+        AuditLog.entity_id == employee.id,
+        AuditLog.action == "career_change",
+    ).order_by(AuditLog.created_at).all()
+
+    # "Joined as X" should reflect what they joined AS, not their current
+    # position/department - if there's since been a career_change, walk its
+    # "Field: OLD → NEW" text (a format we generate ourselves in
+    # update_employee, so parsing it back is safe) to recover the original
+    # value from the oldest recorded change instead of assuming "current".
+    joined_position, joined_department = employee.position, employee.department
+    if logs:
+        for match in re.finditer(r"(Position|Department): (.*?) → (.*?)(?:;|$)", logs[0].details or ""):
+            field, old_val, _ = match.groups()
+            if field == "Position":
+                joined_position = old_val
+            elif field == "Department":
+                joined_department = old_val
+
+    entries = [
+        EmployeeHistoryEntry(
+            date=datetime.combine(employee.joining_date, datetime.min.time(), tzinfo=timezone.utc),
+            action="joined",
+            details=f"Joined as {joined_position} in {joined_department}",
+        )
+    ]
+    for log in logs:
+        entries.append(EmployeeHistoryEntry(date=log.created_at, action="career_change", details=log.details or ""))
+
+    entries.sort(key=lambda e: e.date)
+    return entries
+
+
 @router.put("/{employee_id}", response_model=EmployeeResponse)
 def update_employee(
     employee_id: int,
@@ -478,7 +575,11 @@ def update_employee(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Update employee for the current tenant (admin/employees.edit only)."""
+    """Update employee for the current tenant (admin/employees.edit only).
+    Changes to position/department/seniority_level_id are recorded as
+    structured audit log entries (see _seniority_name below) so they show up
+    on the employee's history timeline - this is how a "promotion" is done,
+    there's no separate promote endpoint."""
     try:
         employee = db.query(Employee).filter(
             Employee.id == employee_id,
@@ -488,12 +589,28 @@ def update_employee(
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
 
-        for key, value in employee_data.model_dump(exclude_unset=True).items():
+        tracked_fields = {"position": "Position", "department": "Department", "seniority_level_id": "Seniority"}
+        update_data = employee_data.model_dump(exclude_unset=True)
+        changes = []
+        for field, label in tracked_fields.items():
+            if field in update_data and update_data[field] != getattr(employee, field):
+                old_val = _seniority_name(db, employee.seniority_level_id) if field == "seniority_level_id" else getattr(employee, field)
+                new_val = _seniority_name(db, update_data[field]) if field == "seniority_level_id" else update_data[field]
+                changes.append(f"{label}: {old_val or 'none'} → {new_val or 'none'}")
+
+        for key, value in update_data.items():
             setattr(employee, key, value)
+
+        if changes:
+            record_audit_log(db, tenant.id, current_user.id, "career_change", "employee", employee.id,
+                              "; ".join(changes))
 
         db.commit()
         db.refresh(employee)
-        return employee
+        return _to_response(db, employee, current_user)
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(f"Error in update_employee: {e}", exc_info=True)
         db.rollback()
