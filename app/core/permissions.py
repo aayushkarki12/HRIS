@@ -40,6 +40,9 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("employees.view_all", "Employees", "View every employee, not just their own department"),
     ("employees.edit", "Employees", "Create and edit employee records"),
     ("employees.view_sensitive", "Employees", "View bank account and social security details for other employees"),
+    ("projects.manage", "Employees", "Create, edit, delete projects and manage project members"),
+    ("resources.manage", "Employees", "Create, edit, delete resources and approve/reject resource requests"),
+    ("assignments.manage", "Employees", "Create, edit, delete, and return resource/project assignments"),
     # Leave & attendance
     ("leave.approve", "Leave & Attendance", "Approve or reject leave requests"),
     ("timesheet.approve", "Leave & Attendance", "Approve timesheets"),
@@ -59,6 +62,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("payroll.view_all", "Finance", "View every employee's salary, not just their own"),
     ("inventory.manage", "Finance", "Manage warehouses, items, and stock movements"),
     ("reports.financial.view", "Finance", "View financial reports and the general ledger"),
+    ("accounting.manage", "Finance", "Manage chart of accounts, ledger groups, cost centers, tax rates, and bank reconciliation"),
 ]
 
 # The permissions ApprovalLimit can put a numeric ceiling on - "approve

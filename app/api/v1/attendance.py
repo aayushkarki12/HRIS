@@ -7,6 +7,7 @@ import pytz
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
+from ...core.permissions import user_has_permission
 from ...core.location import get_location_status
 from ...core.audit import record_audit_log
 from ...models.user import User
@@ -76,7 +77,7 @@ def get_attendance_stats(
     try:
         query = db.query(Attendance).filter(Attendance.tenant_id == tenant.id)
         
-        if current_user.role not in ["admin", "manager"]:
+        if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "attendance.manage"):
             employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
             if employee:
                 query = query.filter(Attendance.employee_id == employee.id)
@@ -128,7 +129,7 @@ def get_today_attendance_overview(
     Tenant-wide snapshot of who's clocked in today (admin/manager only). Used
     to power the "today's attendance" KPI on the admin dashboard.
     """
-    if current_user.role not in ["admin", "manager"]:
+    if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "attendance.manage"):
         raise HTTPException(status_code=403, detail="Not authorized to view tenant-wide attendance")
 
     today = date.today()

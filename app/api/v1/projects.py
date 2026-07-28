@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant
+from ...core.dependencies import get_current_active_user, get_current_tenant
+from ...core.permissions import require_permission
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.project import Project
@@ -19,6 +20,8 @@ from ...schemas.project import (
 )
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+MANAGE = require_permission("projects.manage")
 
 @router.get("", response_model=List[ProjectResponse], include_in_schema=False)
 @router.get("/", response_model=List[ProjectResponse])
@@ -69,7 +72,7 @@ def get_project(
 @router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project(
     project_data: ProjectCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -86,7 +89,7 @@ def create_project(
 def update_project(
     project_id: int,
     project_data: ProjectUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -111,7 +114,7 @@ def update_project(
 @router.delete("/{project_id}")
 def delete_project(
     project_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -168,7 +171,7 @@ def get_project_members(
 def add_project_member(
     project_id: int,
     member_data: ProjectMemberCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -219,7 +222,7 @@ def add_project_member(
 def remove_project_member(
     project_id: int,
     employee_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):

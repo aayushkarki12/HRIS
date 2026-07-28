@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime, date
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_admin_user, get_current_manager_user, get_current_tenant
+from ...core.dependencies import get_current_tenant
 from ...core.permissions import require_permission
 from ...core.audit import record_audit_log
 from ...models.user import User
@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/accounting", tags=["accounting"])
 
 JOURNAL_ENTRY_MANAGE = require_permission("journal_entry.manage")
+ACCOUNTING_MANAGE = require_permission("accounting.manage")
+REPORTS_VIEW = require_permission("reports.financial.view")
 
 # Tally-style voucher numbering series - each voucher type gets its own sequence.
 VOUCHER_PREFIXES = {
@@ -44,7 +46,7 @@ VOUCHER_PREFIXES = {
 
 @router.get("/accounts/tree", response_model=List[AccountTreeResponse])
 def get_account_tree(
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -84,7 +86,7 @@ def get_account_tree(
 
 @router.get("/accounts/types")
 def get_account_types(
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
 ):
     """Get available account types."""
     return [
@@ -103,7 +105,7 @@ def get_accounts(
     account_type: Optional[str] = None,
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -131,7 +133,7 @@ def get_accounts(
 @router.post("/accounts", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 def create_account(
     account_data: AccountCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -172,7 +174,7 @@ def create_account(
 @router.get("/accounts/{account_id}", response_model=AccountResponse)
 def get_account(
     account_id: int,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -197,7 +199,7 @@ def get_account(
 def update_account(
     account_id: int,
     account_data: AccountUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -249,7 +251,7 @@ def update_account(
 @router.delete("/accounts/{account_id}")
 def delete_account(
     account_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -298,7 +300,7 @@ def get_journal_entries(
     reference_type: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -425,7 +427,7 @@ def create_journal_entry(
 @router.get("/journal-entries/{entry_id}", response_model=JournalEntryResponse)
 def get_journal_entry(
     entry_id: int,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -621,7 +623,7 @@ def get_general_ledger(
     end_date: Optional[str] = None,
     account_id: Optional[int] = None,
     account_type: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -711,7 +713,7 @@ def get_general_ledger(
 def get_ledger_summary(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -817,7 +819,7 @@ def _get_account_balances(db, tenant_id, end_date=None, start_date=None):
 def get_trial_balance(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -841,7 +843,7 @@ def get_trial_balance(
 def get_income_statement(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -871,7 +873,7 @@ def get_income_statement(
 @router.get("/reports/balance-sheet")
 def get_balance_sheet(
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -914,7 +916,7 @@ def get_balance_sheet(
 def get_cash_flow(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -996,7 +998,7 @@ def get_cash_flow(
 @router.get("/cost-centers", response_model=List[CostCenterResponse])
 def get_cost_centers(
     is_active: Optional[bool] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1010,7 +1012,7 @@ def get_cost_centers(
 @router.post("/cost-centers", response_model=CostCenterResponse, status_code=status.HTTP_201_CREATED)
 def create_cost_center(
     data: CostCenterCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1039,7 +1041,7 @@ def create_cost_center(
 def update_cost_center(
     cost_center_id: int,
     data: CostCenterUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1061,7 +1063,7 @@ def update_cost_center(
 @router.delete("/cost-centers/{cost_center_id}")
 def deactivate_cost_center(
     cost_center_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1082,7 +1084,7 @@ def get_cost_center_spend(
     cost_center_id: int,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1129,7 +1131,7 @@ def get_cost_center_spend(
 def get_ledger_group_tree(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1198,7 +1200,7 @@ def get_ledger_group_tree(
 def get_ledger_groups(
     is_active: Optional[bool] = None,
     search: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1214,7 +1216,7 @@ def get_ledger_groups(
 @router.post("/ledger-groups", response_model=LedgerGroupResponse, status_code=status.HTTP_201_CREATED)
 def create_ledger_group(
     data: LedgerGroupCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1246,7 +1248,7 @@ def create_ledger_group(
 def update_ledger_group(
     group_id: int,
     data: LedgerGroupUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1295,7 +1297,7 @@ def update_ledger_group(
 @router.delete("/ledger-groups/{group_id}")
 def delete_ledger_group(
     group_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1328,7 +1330,7 @@ def delete_ledger_group(
 @router.get("/tax-rates", response_model=List[TaxRateResponse])
 def get_tax_rates(
     is_active: Optional[bool] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1342,7 +1344,7 @@ def get_tax_rates(
 @router.post("/tax-rates", response_model=TaxRateResponse, status_code=status.HTTP_201_CREATED)
 def create_tax_rate(
     data: TaxRateCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1358,7 +1360,7 @@ def create_tax_rate(
 def update_tax_rate(
     tax_rate_id: int,
     data: TaxRateUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1378,7 +1380,7 @@ def update_tax_rate(
 @router.delete("/tax-rates/{tax_rate_id}")
 def deactivate_tax_rate(
     tax_rate_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1396,7 +1398,7 @@ def deactivate_tax_rate(
 def get_tax_summary(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1442,7 +1444,7 @@ def get_tax_summary(
 @router.get("/reconciliation/{account_id}", response_model=ReconciliationStatusResponse)
 def get_reconciliation_status(
     account_id: int,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1499,7 +1501,7 @@ def get_reconciliation_status(
 def reconcile_account(
     account_id: int,
     data: ReconcileRequest,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(ACCOUNTING_MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1557,7 +1559,7 @@ def reconcile_account(
 @router.get("/reconciliation/{account_id}/history", response_model=List[BankReconciliationResponse])
 def get_reconciliation_history(
     account_id: int,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1575,7 +1577,7 @@ def get_reconciliation_history(
 @router.get("/reports/ratio-analysis")
 def get_ratio_analysis(
     end_date: Optional[str] = None,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1646,7 +1648,7 @@ def _age_bucket(days: int) -> str:
 
 @router.get("/reports/receivables")
 def get_receivables_aging(
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -1695,7 +1697,7 @@ def get_receivables_aging(
 
 @router.get("/reports/payables")
 def get_payables_aging(
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(REPORTS_VIEW),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
