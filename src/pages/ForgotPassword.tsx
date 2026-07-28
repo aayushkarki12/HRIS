@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Container,
-  Paper,
   TextField,
   Button,
   Typography,
@@ -9,7 +7,6 @@ import {
   CircularProgress,
   Box,
   InputAdornment,
-  Divider,
 } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import EmailIcon from '@mui/icons-material/Email';
@@ -43,144 +40,173 @@ const ForgotPassword: React.FC = () => {
       sx={{
         minHeight: '100vh',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        bgcolor: '#F8FAFC',
       }}
     >
-      <Container maxWidth="sm">
-        <Paper
-          elevation={24}
+      {/* Left panel — branding */}
+      <Box
+        sx={{
+          display: { xs: 'none', md: 'flex' },
+          flex: '0 0 420px',
+          bgcolor: 'primary.main',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          px: 6,
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{ position: 'absolute', top: -60, right: -60, width: 240, height: 240, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
+        <Box sx={{ position: 'absolute', bottom: -40, left: -40, width: 180, height: 180, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
+
+        <Box
           sx={{
-            p: 5,
-            borderRadius: 3,
-            background: 'rgba(255, 255, 255, 0.95)',
-            backdropFilter: 'blur(10px)',
+            width: 48,
+            height: 48,
+            borderRadius: '12px',
+            bgcolor: 'rgba(255,255,255,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 3,
           }}
         >
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <Box
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 70,
-                height: 70,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                mb: 2,
-              }}
-            >
-              {submitted ? (
-                <MarkEmailReadIcon sx={{ fontSize: 35, color: 'white' }} />
-              ) : (
-                <EmailIcon sx={{ fontSize: 35, color: 'white' }} />
-              )}
+          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.25rem', letterSpacing: '-0.02em' }}>H</Typography>
+        </Box>
+        <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, mb: 1.5, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+          HRIS System
+        </Typography>
+        <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9375rem', lineHeight: 1.6, mb: 4 }}>
+          Human Resource Information System — manage employees, leaves, payroll, and more in one place.
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {['Multi-tenant architecture', 'Leave & attendance tracking', 'Expense claims & payroll', 'Full accounting module'].map((f) => (
+            <Box key={f} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.6)', flexShrink: 0 }} />
+              <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem' }}>{f}</Typography>
             </Box>
-            <Typography
-              variant="h4"
-              sx={{
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
-              Forgot Password
-            </Typography>
-            <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
-              {submitted ? "We've sent you a reset link" : "We'll email you a link to reset it"}
-            </Typography>
+          ))}
+        </Box>
+      </Box>
+
+      {/* Right panel — form */}
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: { xs: 2, sm: 4 },
+        }}
+      >
+        <Box sx={{ width: '100%', maxWidth: 400 }}>
+          {/* Mobile logo */}
+          <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1, mb: 3 }}>
+            <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.875rem' }}>H</Typography>
+            </Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>HRIS System</Typography>
           </Box>
 
-          <Divider sx={{ mb: 3 }} />
+          <Box
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 48,
+              height: 48,
+              borderRadius: '12px',
+              bgcolor: '#EEF2FF',
+              mb: 2.5,
+            }}
+          >
+            {submitted ? (
+              <MarkEmailReadIcon sx={{ fontSize: 24, color: 'primary.main' }} />
+            ) : (
+              <EmailIcon sx={{ fontSize: 24, color: 'primary.main' }} />
+            )}
+          </Box>
+
+          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mb: 0.5 }}>
+            Forgot password?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            {submitted ? "We've sent you a reset link" : "Enter your details and we'll email you a link to reset it"}
+          </Typography>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setError('')}>
+            <Alert severity="error" sx={{ mb: 2.5 }} onClose={() => setError('')}>
               {error}
             </Alert>
           )}
 
           {submitted ? (
-            <Alert severity="success" sx={{ borderRadius: 2 }}>
+            <Alert severity="success">
               If an account with that email exists, a password reset link has been sent. Check your inbox (and spam folder) - the link expires in 1 hour.
             </Alert>
           ) : (
             <form onSubmit={handleSubmit}>
-              <TextField
-                fullWidth
-                label="Organization Subdomain"
-                value={tenantSubdomain}
-                onChange={(e) => setTenantSubdomain(e.target.value)}
-                required
-                margin="normal"
-                size="medium"
-                helperText="Same subdomain you use to log in (e.g. 'default')"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <BusinessIcon color="action" />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-              <TextField
-                fullWidth
-                label="Email Address"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                margin="normal"
-                size="medium"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EmailIcon color="action" />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Organization Subdomain"
+                  value={tenantSubdomain}
+                  onChange={(e) => setTenantSubdomain(e.target.value)}
+                  required
+                  size="small"
+                  autoFocus
+                  helperText="Same subdomain you use to log in (e.g. 'default')"
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <BusinessIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
+                <TextField
+                  fullWidth
+                  label="Email Address"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  size="small"
+                  autoComplete="email"
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <EmailIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
 
-              <Button
-                fullWidth
-                type="submit"
-                variant="contained"
-                disabled={loading}
-                size="large"
-                sx={{
-                  mt: 3,
-                  mb: 2,
-                  py: 1.5,
-                  borderRadius: 2,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  fontSize: '1rem',
-                }}
-              >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Send Reset Link'}
-              </Button>
+                <Button
+                  fullWidth
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  disabled={loading}
+                  sx={{ mt: 0.5, py: 1.25, fontWeight: 600 }}
+                >
+                  {loading ? <CircularProgress size={20} color="inherit" /> : 'Send Reset Link'}
+                </Button>
+              </Box>
             </form>
           )}
 
-          <Box sx={{ textAlign: 'center', mt: 2 }}>
-            <Button
-              component={RouterLink}
-              to="/login"
-              sx={{ textTransform: 'none', fontWeight: 600, color: '#667eea', '&:hover': { color: '#764ba2' } }}
-            >
+          <Box sx={{ textAlign: 'center', mt: 3 }}>
+            <Button component={RouterLink} to="/login" size="small" sx={{ fontWeight: 600 }}>
               Back to Sign In
             </Button>
           </Box>
-        </Paper>
-      </Container>
+        </Box>
+      </Box>
     </Box>
   );
 };

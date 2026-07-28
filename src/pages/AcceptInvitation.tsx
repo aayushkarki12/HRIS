@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Container,
   Paper,
   TextField,
   Button,
@@ -10,7 +9,6 @@ import {
   Box,
   InputAdornment,
   IconButton,
-  Divider,
   Chip,
 } from '@mui/material';
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
@@ -116,71 +114,112 @@ const AcceptInvitation: React.FC = () => {
       sx={{
         minHeight: '100vh',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        py: 4,
+        bgcolor: '#F8FAFC',
       }}
     >
-      <Container maxWidth="sm">
-        <Paper
-          elevation={24}
+      {/* Left panel — branding */}
+      <Box
+        sx={{
+          display: { xs: 'none', md: 'flex' },
+          flex: '0 0 420px',
+          bgcolor: 'primary.main',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          px: 6,
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{ position: 'absolute', top: -60, right: -60, width: 240, height: 240, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
+        <Box sx={{ position: 'absolute', bottom: -40, left: -40, width: 180, height: 180, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
+
+        <Box
           sx={{
-            p: 5,
-            borderRadius: 3,
-            background: 'rgba(255, 255, 255, 0.95)',
-            backdropFilter: 'blur(10px)',
+            width: 48,
+            height: 48,
+            borderRadius: '12px',
+            bgcolor: 'rgba(255,255,255,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 3,
           }}
         >
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <Box
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 70,
-                height: 70,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                mb: 2,
-              }}
-            >
-              <PersonAddIcon sx={{ fontSize: 35, color: 'white' }} />
+          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.25rem', letterSpacing: '-0.02em' }}>H</Typography>
+        </Box>
+        <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, mb: 1.5, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+          HRIS System
+        </Typography>
+        <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9375rem', lineHeight: 1.6, mb: 4 }}>
+          Human Resource Information System — manage employees, leaves, payroll, and more in one place.
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {['Multi-tenant architecture', 'Leave & attendance tracking', 'Expense claims & payroll', 'Full accounting module'].map((f) => (
+            <Box key={f} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.6)', flexShrink: 0 }} />
+              <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem' }}>{f}</Typography>
             </Box>
-            <Typography
-              variant="h4"
-              sx={{
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
-              Welcome Aboard
-            </Typography>
-            <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
-              Set your username and password to finish setting up your account
-            </Typography>
+          ))}
+        </Box>
+      </Box>
+
+      {/* Right panel — form */}
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: { xs: 2, sm: 4 },
+          py: 4,
+        }}
+      >
+        <Box sx={{ width: '100%', maxWidth: 460 }}>
+          {/* Mobile logo */}
+          <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1, mb: 3 }}>
+            <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.875rem' }}>H</Typography>
+            </Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>HRIS System</Typography>
           </Box>
 
-          <Divider sx={{ mb: 3 }} />
+          <Box
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 48,
+              height: 48,
+              borderRadius: '12px',
+              bgcolor: '#EEF2FF',
+              mb: 2.5,
+            }}
+          >
+            <PersonAddIcon sx={{ fontSize: 24, color: 'primary.main' }} />
+          </Box>
+
+          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mb: 0.5 }}>
+            Welcome aboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Set your username and password to finish setting up your account
+          </Typography>
 
           {loadingDetails ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
             </Box>
           ) : !token || loadError ? (
-            <Alert severity="error" sx={{ borderRadius: 2 }}>
+            <Alert severity="error">
               {loadError || 'No invitation token found in this link. Ask an admin to resend it.'}
             </Alert>
           ) : success ? (
-            <Alert severity="success" sx={{ borderRadius: 2 }}>
+            <Alert severity="success">
               Your account is set up! Redirecting you to sign in...
             </Alert>
           ) : details && (
             <>
-              <Paper variant="outlined" sx={{ p: 2.5, mb: 3, borderRadius: 2, bgcolor: '#F8FAFC' }}>
+              <Paper variant="outlined" sx={{ p: 2.5, mb: 3, bgcolor: '#FFFFFF' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <BadgeIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
@@ -203,119 +242,107 @@ const AcceptInvitation: React.FC = () => {
               </Paper>
 
               {error && (
-                <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setError('')}>
+                <Alert severity="error" sx={{ mb: 2.5 }} onClose={() => setError('')}>
                   {error}
                 </Alert>
               )}
 
               <form onSubmit={handleSubmit}>
-                <TextField
-                  fullWidth
-                  label="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  margin="normal"
-                  size="medium"
-                  helperText={usernameStatus.checked ? (usernameStatus.available ? 'Available' : (usernameStatus.reason || 'Already taken')) : 'At least 3 alphanumeric characters. You can also log in with your email.'}
-                  error={usernameStatus.checked && !usernameStatus.available}
-                  slotProps={{
-                    input: {
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <PersonAddIcon color="action" />
-                        </InputAdornment>
-                      ),
-                      endAdornment: usernameStatus.checked ? (
-                        <InputAdornment position="end">
-                          {usernameStatus.available ? <CheckCircleIcon color="success" fontSize="small" /> : <CancelIcon color="error" fontSize="small" />}
-                        </InputAdornment>
-                      ) : undefined,
-                    },
-                  }}
-                />
-                <TextField
-                  fullWidth
-                  label="Password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  margin="normal"
-                  size="medium"
-                  helperText="At least 8 characters, with uppercase, lowercase, and a number"
-                  slotProps={{
-                    input: {
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <LockIcon color="action" />
-                        </InputAdornment>
-                      ),
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                            {showPassword ? <VisibilityOff /> : <Visibility />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                />
-                <TextField
-                  fullWidth
-                  label="Confirm Password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  margin="normal"
-                  size="medium"
-                  slotProps={{
-                    input: {
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <LockIcon color="action" />
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    size="small"
+                    autoFocus
+                    helperText={usernameStatus.checked ? (usernameStatus.available ? 'Available' : (usernameStatus.reason || 'Already taken')) : 'At least 3 alphanumeric characters. You can also log in with your email.'}
+                    error={usernameStatus.checked && !usernameStatus.available}
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <PersonAddIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                          </InputAdornment>
+                        ),
+                        endAdornment: usernameStatus.checked ? (
+                          <InputAdornment position="end">
+                            {usernameStatus.available ? <CheckCircleIcon color="success" fontSize="small" /> : <CancelIcon color="error" fontSize="small" />}
+                          </InputAdornment>
+                        ) : undefined,
+                      },
+                    }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    size="small"
+                    autoComplete="new-password"
+                    helperText="At least 8 characters, with uppercase, lowercase, and a number"
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <LockIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                          </InputAdornment>
+                        ),
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton onClick={() => setShowPassword(!showPassword)} edge="end" size="small">
+                              {showPassword ? <VisibilityOff sx={{ fontSize: 18 }} /> : <Visibility sx={{ fontSize: 18 }} />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Confirm Password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    size="small"
+                    autoComplete="new-password"
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <LockIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
 
-                <Button
-                  fullWidth
-                  type="submit"
-                  variant="contained"
-                  disabled={submitting}
-                  size="large"
-                  sx={{
-                    mt: 3,
-                    mb: 2,
-                    py: 1.5,
-                    borderRadius: 2,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    fontSize: '1rem',
-                  }}
-                >
-                  {submitting ? <CircularProgress size={24} color="inherit" /> : 'Finish Setup'}
-                </Button>
+                  <Button
+                    fullWidth
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    disabled={submitting}
+                    sx={{ mt: 0.5, py: 1.25, fontWeight: 600 }}
+                  >
+                    {submitting ? <CircularProgress size={20} color="inherit" /> : 'Finish Setup'}
+                  </Button>
+                </Box>
               </form>
             </>
           )}
 
-          <Box sx={{ textAlign: 'center', mt: 2 }}>
-            <Button
-              component={RouterLink}
-              to="/login"
-              sx={{ textTransform: 'none', fontWeight: 600, color: '#667eea', '&:hover': { color: '#764ba2' } }}
-            >
+          <Box sx={{ textAlign: 'center', mt: 3 }}>
+            <Button component={RouterLink} to="/login" size="small" sx={{ fontWeight: 600 }}>
               Back to Sign In
             </Button>
           </Box>
-        </Paper>
-      </Container>
+        </Box>
+      </Box>
     </Box>
   );
 };
