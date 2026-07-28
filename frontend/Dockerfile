@@ -20,6 +20,6 @@ RUN npm install --global serve
 
 COPY --from=build /app/dist ./dist
 
-EXPOSE 3006
+EXPOSE 4002
 
-CMD ["npx", "serve", "-s", "dist", "-l", "3006"]
+CMD ["npx", "serve", "-s", "dist", "-l", "4002"]
