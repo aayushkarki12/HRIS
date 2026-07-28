@@ -4,7 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { ErrorBoundary } from './components';
 import { CommandPaletteProvider } from './components/common/CommandPalette';
-import { PrivateRoute } from './components';
+import { PrivateRoute, RequireRole } from './components';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -62,27 +62,27 @@ function App() {
             <Route path="leaves" element={<Leaves />} />
             <Route path="attendance" element={<Attendance />} />
             <Route path="timesheets" element={<Timesheets />} />
-            <Route path="accounting-dashboard" element={<AccountingDashboard />} />
-            <Route path="chart-of-accounts" element={<ChartOfAccounts />} />
-            <Route path="ledger-groups" element={<LedgerGroups />} />
-            <Route path="audit-trail" element={<AuditTrail />} />
-            <Route path="inventory-setup" element={<InventorySetup />} />
-            <Route path="items" element={<Items />} />
-            <Route path="stock-ledger" element={<StockLedger />} />
-            <Route path="budgets" element={<Budgets />} />
-            <Route path="vouchers" element={<Vouchers />} />
-            <Route path="vouchers/new" element={<VoucherForm />} />
-            <Route path="vouchers/:id" element={<VoucherDetail />} />
-            <Route path="journal-entries" element={<JournalEntries />} />
-            <Route path="general-ledger" element={<GeneralLedger />} />
-            <Route path="cost-centers" element={<CostCentersTax />} />
-            <Route path="bank-reconciliation" element={<BankReconciliation />} />
+            <Route path="accounting-dashboard" element={<RequireRole role="manager"><AccountingDashboard /></RequireRole>} />
+            <Route path="chart-of-accounts" element={<RequireRole role="manager"><ChartOfAccounts /></RequireRole>} />
+            <Route path="ledger-groups" element={<RequireRole role="manager"><LedgerGroups /></RequireRole>} />
+            <Route path="audit-trail" element={<RequireRole role="manager"><AuditTrail /></RequireRole>} />
+            <Route path="inventory-setup" element={<RequireRole role="manager"><InventorySetup /></RequireRole>} />
+            <Route path="items" element={<RequireRole role="manager"><Items /></RequireRole>} />
+            <Route path="stock-ledger" element={<RequireRole role="manager"><StockLedger /></RequireRole>} />
+            <Route path="budgets" element={<RequireRole role="manager"><Budgets /></RequireRole>} />
+            <Route path="vouchers" element={<RequireRole role="manager"><Vouchers /></RequireRole>} />
+            <Route path="vouchers/new" element={<RequireRole role="admin"><VoucherForm /></RequireRole>} />
+            <Route path="vouchers/:id" element={<RequireRole role="manager"><VoucherDetail /></RequireRole>} />
+            <Route path="journal-entries" element={<RequireRole role="manager"><JournalEntries /></RequireRole>} />
+            <Route path="general-ledger" element={<RequireRole role="manager"><GeneralLedger /></RequireRole>} />
+            <Route path="cost-centers" element={<RequireRole role="manager"><CostCentersTax /></RequireRole>} />
+            <Route path="bank-reconciliation" element={<RequireRole role="manager"><BankReconciliation /></RequireRole>} />
             <Route path="payroll" element={<Payroll />} />
             <Route path="expense-claims" element={<ExpenseClaims />} />
-            <Route path="invoices" element={<Invoices />} />
-            <Route path="financial-reports" element={<FinancialReports />} />
-            <Route path="users" element={<Users />} />
-            <Route path="tenant-settings" element={<TenantSettings />} />
+            <Route path="invoices" element={<RequireRole role="manager"><Invoices /></RequireRole>} />
+            <Route path="financial-reports" element={<RequireRole role="manager"><FinancialReports /></RequireRole>} />
+            <Route path="users" element={<RequireRole role="admin"><Users /></RequireRole>} />
+            <Route path="tenant-settings" element={<RequireRole role="admin"><TenantSettings /></RequireRole>} />
             <Route path="profile" element={<Profile />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" />} />

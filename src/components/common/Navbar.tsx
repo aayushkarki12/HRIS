@@ -95,7 +95,8 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
   });
 
   const userInitials = `${user?.first_name?.[0] ?? ''}${user?.last_name?.[0] ?? ''}`.toUpperCase();
-  const avatarSrc = myProfile?.profile_picture ? `http://localhost:8010${myProfile.profile_picture}` : undefined;
+  const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8010/api/v1').replace(/\/api\/v1\/?$/, '');
+  const avatarSrc = myProfile?.profile_picture ? `${API_BASE}${myProfile.profile_picture}` : undefined;
   const tenantName = tenant?.name ?? 'HRIS System';
 
   // ── Handlers ───────────────────────────────────────────────────────────────
