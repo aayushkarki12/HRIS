@@ -15,6 +15,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -25,11 +26,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.add_column('documents', sa.Column('tenant_id', sa.Integer(), nullable=False))
-    op.create_foreign_key(
-        'documents_tenant_id_fkey', 'documents', 'tenants', ['tenant_id'], ['id']
-    )
+    """Upgrade schema.
+
+    Guarded: this fixed drift on the original (Supabase) database, where the
+    baseline migration had been stamped without actually creating the column.
+    On a database built from this chain top-to-bottom (nothing stamped, no
+    drift), the baseline migration already creates `documents.tenant_id`
+    directly, so this would otherwise fail with a duplicate-column error.
+    """
+    inspector = inspect(op.get_bind())
+    existing_columns = {c["name"] for c in inspector.get_columns("documents")}
+    if "tenant_id" not in existing_columns:
+        op.add_column('documents', sa.Column('tenant_id', sa.Integer(), nullable=False))
+        op.create_foreign_key(
+            'documents_tenant_id_fkey', 'documents', 'tenants', ['tenant_id'], ['id']
+        )
 
 
 def downgrade() -> None:
