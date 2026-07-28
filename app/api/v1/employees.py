@@ -279,8 +279,7 @@ async def upload_my_avatar(
     return {"url": url}
 
 
-@router.get("", response_model=List[EmployeeResponse], include_in_schema=False)
-@router.get("/", response_model=List[EmployeeResponse])
+@router.get("", response_model=List[EmployeeResponse])
 def get_employees(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -354,7 +353,7 @@ def get_employee_stats(
         logger.error(f"Error in get_employee_stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
 def create_employee(
     employee_data: EmployeeCreate,
     current_user: User = Depends(EDIT),

@@ -22,8 +22,7 @@ router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 MANAGE = require_permission("assignments.manage")
 
-@router.get("", response_model=List[AssignmentResponse], include_in_schema=False)
-@router.get("/", response_model=List[AssignmentResponse])
+@router.get("", response_model=List[AssignmentResponse])
 def get_assignments(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -177,7 +176,7 @@ def get_assignment(
         ]
     }
 
-@router.post("/", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AssignmentResponse, status_code=status.HTTP_201_CREATED)
 def create_assignment(
     assignment_data: AssignmentCreate,
     current_user: User = Depends(MANAGE),

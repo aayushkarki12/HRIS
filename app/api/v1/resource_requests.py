@@ -20,7 +20,7 @@ router = APIRouter(prefix="/resource-requests", tags=["resource-requests"])
 MANAGE = require_permission("resources.manage")
 
 
-@router.post("/", response_model=ResourceRequestResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ResourceRequestResponse, status_code=status.HTTP_201_CREATED)
 def create_resource_request(
     request_data: ResourceRequestCreate,
     current_user: User = Depends(get_current_active_user),
@@ -65,7 +65,7 @@ def create_resource_request(
     return req
 
 
-@router.get("/", response_model=List[ResourceRequestResponse])
+@router.get("", response_model=List[ResourceRequestResponse])
 def get_resource_requests(
     status_filter: Optional[str] = Query(None, alias="status"),
     current_user: User = Depends(get_current_active_user),

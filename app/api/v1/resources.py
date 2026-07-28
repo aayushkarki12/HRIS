@@ -19,8 +19,7 @@ MANAGE = require_permission("resources.manage")
 
 # ─── Collection + search ──────────────────────────────────────────────────────
 
-@router.get("", response_model=List[ResourceResponse], include_in_schema=False)
-@router.get("/", response_model=List[ResourceResponse])
+@router.get("", response_model=List[ResourceResponse])
 def get_resources(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -200,7 +199,7 @@ def get_resource(
     return resource
 
 
-@router.post("/", response_model=ResourceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ResourceResponse, status_code=status.HTTP_201_CREATED)
 def create_resource(
     resource_data: ResourceCreate,
     current_user: User = Depends(MANAGE),

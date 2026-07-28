@@ -61,7 +61,7 @@ def _hydrate(log: AuditLog) -> AuditLog:
     return log
 
 
-@router.get("/", response_model=List[AuditLogResponse])
+@router.get("", response_model=List[AuditLogResponse])
 def get_audit_logs(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),

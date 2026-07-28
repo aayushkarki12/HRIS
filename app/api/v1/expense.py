@@ -74,7 +74,7 @@ def get_pending_expenses(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/", response_model=List[ExpenseClaimResponse])
+@router.get("", response_model=List[ExpenseClaimResponse])
 def get_all_expenses(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -105,7 +105,7 @@ def get_all_expenses(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/", response_model=ExpenseClaimResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ExpenseClaimResponse, status_code=status.HTTP_201_CREATED)
 def create_expense_claim(
     data: ExpenseClaimCreate,
     current_employee: Employee = Depends(get_current_employee),

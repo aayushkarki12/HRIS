@@ -26,7 +26,7 @@ def _hydrate(db: Session, tenant_id: int, budget: Budget) -> Budget:
     return budget
 
 
-@router.get("/", response_model=List[BudgetResponse])
+@router.get("", response_model=List[BudgetResponse])
 def get_budgets(
     fiscal_year: Optional[int] = None,
     scope_type: Optional[str] = None,
@@ -61,7 +61,7 @@ def get_budget(
     return _hydrate(db, tenant.id, budget)
 
 
-@router.post("/", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
 def create_budget(
     data: BudgetCreate,
     current_user: User = Depends(get_current_admin_user),

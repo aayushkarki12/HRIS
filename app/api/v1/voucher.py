@@ -46,7 +46,7 @@ def _load(db: Session, voucher_id: int, tenant_id: int) -> Optional[Voucher]:
     ).filter(Voucher.id == voucher_id, Voucher.tenant_id == tenant_id).first()
 
 
-@router.get("/", response_model=List[VoucherResponse])
+@router.get("", response_model=List[VoucherResponse])
 def get_vouchers(
     voucher_type: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -71,7 +71,7 @@ def get_vouchers(
     return [_hydrate(v) for v in vouchers]
 
 
-@router.post("/", response_model=VoucherResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=VoucherResponse, status_code=status.HTTP_201_CREATED)
 def create_voucher(
     data: VoucherCreate,
     current_user: User = Depends(CREATE),

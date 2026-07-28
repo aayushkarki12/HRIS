@@ -74,7 +74,7 @@ def get_invoice_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/", response_model=List[InvoiceResponse])
+@router.get("", response_model=List[InvoiceResponse])
 def get_invoices(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -99,7 +99,7 @@ def get_invoices(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 def create_invoice(
     data: InvoiceCreate,
     current_user: User = Depends(MANAGE),

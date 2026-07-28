@@ -16,7 +16,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 MANAGE = require_permission("users.manage")
 
 
-@router.get("/", response_model=List[UserResponse])
+@router.get("", response_model=List[UserResponse])
 def get_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),

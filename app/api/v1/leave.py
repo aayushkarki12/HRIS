@@ -119,7 +119,7 @@ def get_leave(
     
     return leave
 
-@router.post("/", response_model=LeaveResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LeaveResponse, status_code=status.HTTP_201_CREATED)
 def create_leave_request(
     leave_data: LeaveCreate,
     current_employee: Employee = Depends(get_current_employee),

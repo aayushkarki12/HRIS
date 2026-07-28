@@ -18,7 +18,7 @@ MANAGE = require_permission("tenant.manage")
 # therefore only ever expose or mutate the caller's OWN tenant record; none
 # of these should ever take an arbitrary tenant_id from another tenant.
 
-@router.get("/", response_model=List[TenantResponse])
+@router.get("", response_model=List[TenantResponse])
 def get_tenants(
     current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)

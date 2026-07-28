@@ -23,8 +23,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 MANAGE = require_permission("projects.manage")
 
-@router.get("", response_model=List[ProjectResponse], include_in_schema=False)
-@router.get("/", response_model=List[ProjectResponse])
+@router.get("", response_model=List[ProjectResponse])
 def get_projects(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -69,7 +68,7 @@ def get_project(
         raise HTTPException(status_code=404, detail="Project not found")
     return project
 
-@router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project(
     project_data: ProjectCreate,
     current_user: User = Depends(MANAGE),
