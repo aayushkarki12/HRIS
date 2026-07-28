@@ -92,7 +92,8 @@ def create_salary_structure(
         db.flush()
 
         record_audit_log(db, tenant.id, current_user.id, "create", "salary_structure", db_salary.id,
-                          f"Set salary for employee {employee.id} to {data.base_salary} {data.currency}")
+                          f"Set salary for employee {employee.id}: base {data.base_salary} {data.currency}, "
+                          f"bonus {data.bonus}, SSF {data.ssf_percent}%, other deductions {data.other_deductions}")
 
         db.commit()
         db.refresh(db_salary)

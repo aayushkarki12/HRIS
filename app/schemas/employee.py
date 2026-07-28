@@ -11,6 +11,10 @@ class EmployeeBase(BaseModel):
     department: str = Field(..., min_length=2, max_length=50)
     position: str = Field(..., min_length=2, max_length=50)
     joining_date: date
+    # "full_time" | "probation" - admin-set, drives a reduced leave
+    # allocation while on probation (see app/api/v1/leave.py). Not part of
+    # update_my_profile's self-service field whitelist.
+    employment_type: str = Field("full_time", pattern="^(full_time|probation)$")
     # Self-service fields - all optional
     profile_picture: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -53,6 +57,8 @@ class EmployeeUpdate(BaseModel):
     # Admin-only in practice - update_my_profile's field whitelist doesn't
     # include this, so self-service can't set it.
     seniority_level_id: Optional[int] = None
+    # Admin-only in practice - see EmployeeBase.employment_type.
+    employment_type: Optional[str] = Field(None, pattern="^(full_time|probation)$")
     # Self-service fields
     profile_picture: Optional[str] = None
     date_of_birth: Optional[date] = None

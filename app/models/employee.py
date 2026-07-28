@@ -24,6 +24,11 @@ class Employee(Base):
     # permissions. Nullable - most employees won't have one until an admin
     # sets it.
     seniority_level_id = Column(Integer, ForeignKey("seniority_levels.id"), nullable=True)
+    # "full_time" | "probation" - a new hire typically starts on probation and
+    # is confirmed to full_time later via a normal PUT /employees/{id}. Drives
+    # a reduced leave allocation while on probation - see
+    # app/api/v1/leave.py::PROBATION_LEAVE_RATIO.
+    employment_type = Column(String(20), nullable=False, default="full_time")
 
     # Self-service fields
     profile_picture = Column(String(255), nullable=True)

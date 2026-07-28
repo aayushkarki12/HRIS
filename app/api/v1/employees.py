@@ -589,7 +589,10 @@ def update_employee(
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
 
-        tracked_fields = {"position": "Position", "department": "Department", "seniority_level_id": "Seniority"}
+        tracked_fields = {
+            "position": "Position", "department": "Department", "seniority_level_id": "Seniority",
+            "employment_type": "Employment Type",
+        }
         update_data = employee_data.model_dump(exclude_unset=True)
         changes = []
         for field, label in tracked_fields.items():
