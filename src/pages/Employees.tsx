@@ -113,16 +113,19 @@ const Employees: React.FC = () => {
     resolver: zodResolver(employeeSchema),
   });
 
-  const roleIdValue = watch('role_id');
+  const positionValue = watch('position');
 
   const createRoleMutation = useMutation({
     mutationFn: (name: string) => rbacService.createRole({ name, permission_keys: [] }),
     onSuccess: async (newRole: any) => {
       await refetchRoles();
-      setValue('role_id', String(newRole.id));
+      setValue('position', newRole.name);
+      if (!editingId) {
+        setValue('role_id', String(newRole.id));
+      }
       setCreatingDesignation(false);
       setNewDesignationName('');
-      toast.success(`Designation "${newRole.name}" created`);
+      toast.success(`"${newRole.name}" created`);
     },
     onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to create designation')),
   });
@@ -465,14 +468,6 @@ const Employees: React.FC = () => {
                 </TextField>
                 <TextField
                   fullWidth
-                  label="Position"
-                  {...register('position')}
-                  error={!!errors.position}
-                  helperText={errors.position?.message}
-                  size="small"
-                />
-                <TextField
-                  fullWidth
                   label="Join Date"
                   type="date"
                   {...register('joining_date')}
@@ -498,54 +493,61 @@ const Employees: React.FC = () => {
                     <MenuItem key={level.id} value={String(level.id)}>{level.name}</MenuItem>
                   ))}
                 </TextField>
-                {!editingId && (
-                  creatingDesignation ? (
-                    <Box sx={{ display: 'flex', gap: 1, gridColumn: '1 / -1' }}>
-                      <TextField
-                        fullWidth
-                        autoFocus
-                        label="New Designation Name"
-                        value={newDesignationName}
-                        onChange={(e) => setNewDesignationName(e.target.value)}
-                        size="small"
-                        placeholder="e.g. Senior Developer"
-                      />
-                      <Button
-                        variant="contained"
-                        size="small"
-                        disabled={!newDesignationName.trim() || createRoleMutation.isPending}
-                        onClick={() => createRoleMutation.mutate(newDesignationName.trim())}
-                      >
-                        Add
-                      </Button>
-                      <Button size="small" color="inherit" onClick={() => { setCreatingDesignation(false); setNewDesignationName(''); }}>
-                        Cancel
-                      </Button>
-                    </Box>
-                  ) : (
+                {creatingDesignation ? (
+                  <Box sx={{ display: 'flex', gap: 1, gridColumn: '1 / -1' }}>
                     <TextField
                       fullWidth
-                      select
-                      label="Designation (optional)"
-                      value={roleIdValue ?? ''}
-                      onChange={(e) => {
-                        if (e.target.value === NEW_DESIGNATION_SENTINEL) {
-                          setCreatingDesignation(true);
-                        } else {
-                          setValue('role_id', e.target.value);
-                        }
-                      }}
-                      helperText="Grants the login this designation's permissions - can also be set later from Users & Roles"
+                      autoFocus
+                      label="New Position / Designation"
+                      value={newDesignationName}
+                      onChange={(e) => setNewDesignationName(e.target.value)}
                       size="small"
-                      sx={{ gridColumn: '1 / -1' }}
+                      placeholder="e.g. Senior Developer"
+                    />
+                    <Button
+                      variant="contained"
+                      size="small"
+                      disabled={!newDesignationName.trim() || createRoleMutation.isPending}
+                      onClick={() => createRoleMutation.mutate(newDesignationName.trim())}
                     >
-                      <MenuItem value="">None</MenuItem>
-                      {(roles as any[]).map((r) => (
-                        <MenuItem key={r.id} value={String(r.id)}>{r.name}</MenuItem>
-                      ))}
-                      <MenuItem value={NEW_DESIGNATION_SENTINEL} sx={{ fontStyle: 'italic' }}>+ Create New Designation…</MenuItem>
-                    </TextField>
-                  )
+                      Add
+                    </Button>
+                    <Button size="small" color="inherit" onClick={() => { setCreatingDesignation(false); setNewDesignationName(''); }}>
+                      Cancel
+                    </Button>
+                  </Box>
+                ) : (
+                  <TextField
+                    fullWidth
+                    select
+                    label="Position / Designation"
+                    value={positionValue ?? ''}
+                    onChange={(e) => {
+                      if (e.target.value === NEW_DESIGNATION_SENTINEL) {
+                        setCreatingDesignation(true);
+                        return;
+                      }
+                      setValue('position', e.target.value);
+                      if (!editingId) {
+                        const role = (roles as any[]).find((r) => r.name === e.target.value);
+                        setValue('role_id', role ? String(role.id) : '');
+                      }
+                    }}
+                    error={!!errors.position}
+                    helperText={errors.position?.message || (editingId
+                      ? 'Updates their job title. To change what permissions their login has, use Users & Roles.'
+                      : "Sets the job title and grants the new login this designation's permissions")}
+                    size="small"
+                    sx={{ gridColumn: '1 / -1' }}
+                  >
+                    {positionValue && !(roles as any[]).some((r) => r.name === positionValue) && (
+                      <MenuItem value={positionValue}>{positionValue} (not in list)</MenuItem>
+                    )}
+                    {(roles as any[]).map((r) => (
+                      <MenuItem key={r.id} value={r.name}>{r.name}</MenuItem>
+                    ))}
+                    <MenuItem value={NEW_DESIGNATION_SENTINEL} sx={{ fontStyle: 'italic' }}>+ Create New…</MenuItem>
+                  </TextField>
                 )}
               </Box>
             </DialogContent>
