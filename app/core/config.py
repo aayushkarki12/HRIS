@@ -9,12 +9,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # Comma-separated list of allowed frontend origins. No wildcard in production.
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+    CORS_ORIGINS: str = "http://localhost:4002,http://localhost:5173,http://127.0.0.1:4002,http://127.0.0.1:5173"
 
     # Email (Resend) - used for password reset links
     RESEND_API_KEY: str = ""
     RESEND_FROM_EMAIL: str = "onboarding@resend.dev"
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:4002"
 
     # SeaweedFS S3-gateway object storage for employee documents (same
     # pattern/env-var names as the dossier project's storage.py, so ops only
