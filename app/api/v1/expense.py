@@ -6,9 +6,10 @@ from datetime import datetime
 
 from ...core.database import get_db
 from ...core.dependencies import (
-    get_current_active_user, get_current_admin_user,
+    get_current_active_user,
     get_current_tenant, get_current_employee, get_current_manager_user
 )
+from ...core.permissions import require_permission, require_permission_with_limit, PermissionContext
 from ...core.audit import record_audit_log
 from ...core.notifications import notify_user
 from ...core.voucher_service import attach_voucher
@@ -231,7 +232,7 @@ def submit_expense_claim(
 @router.put("/{claim_id}/manager-approve", response_model=ExpenseClaimResponse)
 def manager_approve_expense(
     claim_id: int,
-    current_user: User = Depends(get_current_manager_user),
+    current_user: User = Depends(require_permission("expense.approve_manager")),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -276,11 +277,12 @@ def manager_approve_expense(
 @router.put("/{claim_id}/accounting-approve", response_model=ExpenseClaimResponse)
 def accounting_approve_expense(
     claim_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    ctx: PermissionContext = Depends(require_permission_with_limit("expense.approve_accounting")),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Accounting (admin) approves an expense claim."""
+    """Accounting approves an expense claim."""
+    current_user = ctx.user
     try:
         claim = db.query(ExpenseClaim).options(
             joinedload(ExpenseClaim.lines)
@@ -302,6 +304,12 @@ def accounting_approve_expense(
                 detail="You cannot give accounting approval to your own expense claim - ask another admin to review it"
             )
 
+        if ctx.limit is not None and claim.total_amount > ctx.limit:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This claim ({claim.total_amount:.2f}) exceeds your approval limit ({ctx.limit:.2f}) - ask someone more senior to approve it"
+            )
+
         claim.status = "accounting_approved"
         claim.accounting_approved_by = current_user.id
         claim.accounting_approved_at = datetime.now()
@@ -321,7 +329,7 @@ def accounting_approve_expense(
 @router.put("/{claim_id}/pay", response_model=ExpenseClaimResponse)
 def pay_expense_claim(
     claim_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(require_permission("expense.approve_accounting")),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):

@@ -118,6 +118,21 @@ def update_user(
         if not new_role:
             raise HTTPException(status_code=404, detail="Role not found")
 
+    # Setting the legacy `role` string without also specifying role_id would
+    # otherwise leave role_id stale - e.g. promoting someone to role="manager"
+    # this way wouldn't grant the Manager system role's permissions on any
+    # endpoint that's been migrated to the new system, silently reducing
+    # their access. Keep them in sync unless the caller explicitly set
+    # role_id itself (which takes precedence).
+    if 'role' in update_data and 'role_id' not in update_data:
+        system_role = db.query(Role).filter(
+            Role.tenant_id == current_user.tenant_id,
+            Role.is_system.is_(True),
+            Role.name == {"admin": "Admin", "manager": "Manager", "user": "Employee"}.get(update_data['role']),
+        ).first()
+        if system_role:
+            update_data['role_id'] = system_role.id
+
     # A manager must never be able to change their own role/role_id, even by
     # mistake - this would either lock them out of manage-gated endpoints or
     # (if they're the only one who can grant users.manage) leave nobody able
