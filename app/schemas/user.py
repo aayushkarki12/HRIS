@@ -45,6 +45,9 @@ class UserUpdate(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=50)
     last_name: Optional[str] = Field(None, min_length=1, max_length=50)
     role: Optional[str] = Field(None, pattern="^(admin|manager|user)$")
+    # New RBAC role/designation (see app/models/rbac.py) - separate from the
+    # legacy `role` string above, which stays in place during the rollout.
+    role_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -55,11 +58,12 @@ class UserResponse(BaseModel):
     first_name: str
     last_name: str
     role: str
+    role_id: Optional[int] = None
     is_active: bool
     tenant_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 

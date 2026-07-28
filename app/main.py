@@ -30,6 +30,7 @@ from .api import (
     voucher_router,
     inventory_router,
     budget_router,
+    rbac_router,
 )
 
 app = FastAPI(
@@ -78,6 +79,7 @@ app.include_router(resource_requests_router, prefix="/api/v1")
 app.include_router(voucher_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")
 app.include_router(budget_router, prefix="/api/v1")
+app.include_router(rbac_router, prefix="/api/v1")
 
 # Avatars are low-sensitivity and rendered via plain <img> tags all over the
 # UI, so they stay on a public static mount. Employee documents (resumes,

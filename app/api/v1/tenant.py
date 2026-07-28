@@ -3,12 +3,15 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_admin_user, get_current_active_user
+from ...core.dependencies import get_current_active_user
+from ...core.permissions import require_permission
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...schemas.tenant import TenantCreate, TenantUpdate, TenantResponse
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
+
+MANAGE = require_permission("tenant.manage")
 
 # There is no platform-level "superadmin" role in this system - "admin" is a
 # per-tenant role held by ordinary customers. Every route below must
@@ -17,7 +20,7 @@ router = APIRouter(prefix="/tenants", tags=["tenants"])
 
 @router.get("/", response_model=List[TenantResponse])
 def get_tenants(
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """List tenants visible to the caller - just their own."""
@@ -38,7 +41,7 @@ def get_my_tenant(
 @router.get("/{tenant_id}", response_model=TenantResponse)
 def get_tenant(
     tenant_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """Get tenant by ID - admin of that same tenant only."""
@@ -53,7 +56,7 @@ def get_tenant(
 def update_tenant(
     tenant_id: int,
     tenant_data: TenantUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """Update tenant - admin of that same tenant only."""
@@ -87,7 +90,7 @@ def update_tenant(
 @router.delete("/{tenant_id}")
 def delete_tenant(
     tenant_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """Delete tenant - admin of that same tenant only."""

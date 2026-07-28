@@ -236,6 +236,26 @@ def get_current_user_info(
     return current_user
 
 
+@router.get("/me/permissions")
+def get_current_user_permissions(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    The resolved set of permission keys the current user's role grants, for
+    the frontend to gate UI without duplicating the role->permission lookup.
+    A user still on the legacy "admin" string role (not yet assigned a Role
+    row) is reported as having every known permission, matching the backend's
+    own bypass in app.core.permissions.user_has_permission.
+    """
+    from ...core.permissions import PERMISSIONS, _legacy_admin_bypass, _user_permission_keys
+    if _legacy_admin_bypass(current_user):
+        keys = [key for key, _, _ in PERMISSIONS]
+    else:
+        keys = sorted(_user_permission_keys(db, current_user))
+    return {"permissions": keys, "role_id": current_user.role_id}
+
+
 @router.post("/refresh", response_model=AccessTokenResponse)
 def refresh_access_token(
     data: RefreshTokenRequest,

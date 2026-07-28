@@ -8,7 +8,8 @@ from typing import List, Optional
 from datetime import date
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant
+from ...core.dependencies import get_current_active_user, get_current_tenant
+from ...core.permissions import require_permission, user_has_permission
 from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.tenant import Tenant
@@ -19,15 +20,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
+EDIT = require_permission("employees.edit")
+
 # Bank/SSN data should only ever be visible to the employee themself or to
-# admin/manager roles - not to any coworker who happens to share a
-# department or be able to enumerate IDs.
+# admin/manager roles (legacy) / employees.view_sensitive (new RBAC) - not to
+# any coworker who happens to share a department or be able to enumerate IDs.
 _SENSITIVE_FIELDS = ("bank_account", "bank_routing", "social_security")
 
 
-def _to_response(employee: Employee, viewer: User) -> EmployeeResponse:
+def _can_view_all(db: Session, viewer: User) -> bool:
+    return viewer.role in ("admin", "manager") or user_has_permission(db, viewer, "employees.view_all")
+
+
+def _to_response(db: Session, employee: Employee, viewer: User) -> EmployeeResponse:
     resp = EmployeeResponse.model_validate(employee)
-    is_privileged = viewer.role in ("admin", "manager")
+    is_privileged = viewer.role in ("admin", "manager") or user_has_permission(db, viewer, "employees.view_sensitive")
     is_self = employee.user_id == viewer.id
     if not is_privileged and not is_self:
         for field in _SENSITIVE_FIELDS:
@@ -51,10 +58,10 @@ def get_my_profile(
         Employee.user_id == current_user.id,
         Employee.tenant_id == tenant.id
     ).first()
-    
+
     if not employee:
         raise HTTPException(status_code=404, detail="Employee profile not found")
-    
+
     return employee
 
 @router.put("/me", response_model=EmployeeResponse)
@@ -72,24 +79,24 @@ def update_my_profile(
             Employee.user_id == current_user.id,
             Employee.tenant_id == tenant.id
         ).first()
-        
+
         if not employee:
             raise HTTPException(status_code=404, detail="Employee profile not found")
-        
+
         # Get only the fields that were sent
         update_data = employee_data.model_dump(exclude_unset=True)
-        
+
         logger.info(f"Updating employee {employee.id} with data: {update_data}")
-        
+
         # Allowed fields for self-service
         allowed_fields = [
-            'first_name', 'last_name', 'email', 'phone', 
+            'first_name', 'last_name', 'email', 'phone',
             'date_of_birth', 'gender', 'marital_status', 'address',
             'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relation',
             'bank_name', 'bank_account', 'bank_routing', 'social_security',
             'skills', 'certifications', 'profile_picture'
         ]
-        
+
         # Update only allowed fields
         for key, value in update_data.items():
             if key in allowed_fields:
@@ -108,13 +115,13 @@ def update_my_profile(
                         logger.error(f"Error parsing date: {e}", exc_info=True)
                         # If date parsing fails, set to None
                         value = None
-                
+
                 logger.info(f"Setting {key} = {value}")
                 setattr(employee, key, value)
-        
+
         db.commit()
         db.refresh(employee)
-        
+
         return employee
     except HTTPException:
         raise
@@ -194,7 +201,7 @@ def get_employees(
             or_(User.role != "admin", Employee.user_id.is_(None))
         )
 
-        if current_user.role not in ("admin", "manager"):
+        if not _can_view_all(db, current_user):
             me = db.query(Employee).filter(
                 Employee.user_id == current_user.id,
                 Employee.tenant_id == tenant.id
@@ -213,7 +220,7 @@ def get_employees(
             )
 
         employees = query.offset(skip).limit(limit).all()
-        return [_to_response(e, current_user) for e in employees]
+        return [_to_response(db, e, current_user) for e in employees]
     except Exception as e:
         logger.error(f"Error in get_employees: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -231,12 +238,12 @@ def get_employee_stats(
             Employee.tenant_id == tenant.id,
             Employee.is_active == True
         ).count()
-        
+
         departments = db.query(
             Employee.department,
             func.count(Employee.id).label('count')
         ).filter(Employee.tenant_id == tenant.id).group_by(Employee.department).all()
-        
+
         return {
             "total": total,
             "active": active,
@@ -250,11 +257,11 @@ def get_employee_stats(
 @router.post("/", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
 def create_employee(
     employee_data: EmployeeCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(EDIT),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Create a new employee for the current tenant (admin only)."""
+    """Create a new employee for the current tenant (admin/employees.edit only)."""
     try:
         existing = db.query(Employee).filter(
             Employee.employee_id == employee_data.employee_id,
@@ -262,7 +269,7 @@ def create_employee(
         ).first()
         if existing:
             raise HTTPException(status_code=400, detail="Employee ID already exists")
-        
+
         db_employee = Employee(**employee_data.model_dump(), tenant_id=tenant.id)
         db.add(db_employee)
         db.flush()
@@ -304,7 +311,7 @@ def get_employee(
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
 
-        if current_user.role not in ("admin", "manager") and employee.user_id != current_user.id:
+        if not _can_view_all(db, current_user) and employee.user_id != current_user.id:
             me = db.query(Employee).filter(
                 Employee.user_id == current_user.id,
                 Employee.tenant_id == tenant.id
@@ -315,7 +322,7 @@ def get_employee(
                     detail="Not authorized to view this employee"
                 )
 
-        return _to_response(employee, current_user)
+        return _to_response(db, employee, current_user)
     except HTTPException:
         raise
     except Exception as e:
@@ -326,23 +333,23 @@ def get_employee(
 def update_employee(
     employee_id: int,
     employee_data: EmployeeUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(EDIT),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Update employee for the current tenant (admin only)."""
+    """Update employee for the current tenant (admin/employees.edit only)."""
     try:
         employee = db.query(Employee).filter(
             Employee.id == employee_id,
             Employee.tenant_id == tenant.id
         ).first()
-        
+
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
-        
+
         for key, value in employee_data.model_dump(exclude_unset=True).items():
             setattr(employee, key, value)
-        
+
         db.commit()
         db.refresh(employee)
         return employee
@@ -354,20 +361,20 @@ def update_employee(
 @router.delete("/{employee_id}")
 def delete_employee(
     employee_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(EDIT),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Deactivate employee for the current tenant (admin only)."""
+    """Deactivate employee for the current tenant (admin/employees.edit only)."""
     try:
         employee = db.query(Employee).filter(
             Employee.id == employee_id,
             Employee.tenant_id == tenant.id
         ).first()
-        
+
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
-        
+
         employee.is_active = False
         db.commit()
         return {"message": "Employee deactivated successfully"}

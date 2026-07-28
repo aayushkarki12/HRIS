@@ -42,6 +42,9 @@ class EmployeeUpdate(BaseModel):
     position: Optional[str] = Field(None, min_length=2, max_length=50)
     joining_date: Optional[date] = None
     is_active: Optional[bool] = None
+    # Admin-only in practice - update_my_profile's field whitelist doesn't
+    # include this, so self-service can't set it.
+    seniority_level_id: Optional[int] = None
     # Self-service fields
     profile_picture: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -63,8 +66,9 @@ class EmployeeResponse(EmployeeBase):
     id: int
     user_id: Optional[int] = None
     is_active: bool
+    seniority_level_id: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
