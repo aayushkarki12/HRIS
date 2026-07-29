@@ -17,40 +17,73 @@ async def get_current_tenant(
     db: Session = Depends(get_db)
 ) -> Tenant:
     """
-    Get current tenant from subdomain or header.
+    Resolve the current tenant.
+
+    Authenticated requests always resolve the tenant from the caller's own
+    user record (decoded from their JWT) - never from the client-supplied
+    X-Tenant-ID header. A header is just a value the frontend cached in
+    localStorage; if it's stale (e.g. left over from before a tenant was
+    renumbered or removed) or simply spoofed, trusting it would either 404
+    every request for that session or let a user address another tenant's
+    data. The header/subdomain/"default" fallback below only runs for the
+    handful of endpoints that execute before a user is authenticated
+    (registration, the tenant-exists check).
     """
-    # Method 1: From header (frontend sends this)
-    tenant_id = request.headers.get("X-Tenant-ID")
-    
-    if tenant_id:
-        tenant = db.query(Tenant).filter(Tenant.id == int(tenant_id)).first()
-        if tenant:
-            return tenant
-    
-    # Method 2: From subdomain
-    host = request.headers.get("host", "")
-    subdomain = host.split('.')[0] if '.' in host else None
-    
-    if subdomain and subdomain not in ["localhost", "api", "www", "127.0.0.1"]:
-        tenant = db.query(Tenant).filter(Tenant.subdomain == subdomain).first()
-        if tenant:
-            return tenant
-    
-    # Method 3: Default tenant (for development)
-    tenant = db.query(Tenant).filter(Tenant.subdomain == "default").first()
-    
+    tenant: Optional[Tenant] = None
+
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        # A Bearer header means the caller is claiming to be authenticated -
+        # any failure here is a credentials problem (401), not a tenant
+        # lookup problem. Falling through to the pre-auth fallback instead
+        # would surface an expired/invalid token as "Tenant not found" (404),
+        # which the frontend doesn't treat as a sign-out trigger the way it
+        # does 401, silently breaking the expired-session redirect to login.
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        try:
+            payload = decode_access_token(auth_header[7:])
+        except JWTError:
+            raise credentials_exception
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+        user = db.query(User).filter(User.id == int(user_id)).first()
+        if user is None:
+            raise credentials_exception
+        tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+    else:
+        # Pre-auth fallback - Method 1: header (frontend sends this)
+        tenant_id = request.headers.get("X-Tenant-ID")
+        if tenant_id:
+            tenant = db.query(Tenant).filter(Tenant.id == int(tenant_id)).first()
+
+        # Method 2: from subdomain
+        if tenant is None:
+            host = request.headers.get("host", "")
+            subdomain = host.split('.')[0] if '.' in host else None
+            if subdomain and subdomain not in ["localhost", "api", "www", "127.0.0.1"]:
+                tenant = db.query(Tenant).filter(Tenant.subdomain == subdomain).first()
+
+        # Method 3: default tenant (for development)
+        if tenant is None:
+            tenant = db.query(Tenant).filter(Tenant.subdomain == "default").first()
+
     if not tenant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tenant not found"
         )
-    
+
     if not tenant.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tenant is inactive"
         )
-    
+
     return tenant
 
 async def get_current_user(

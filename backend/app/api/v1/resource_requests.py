@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant
+from ...core.permissions import require_permission, user_has_permission
 from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.tenant import Tenant
@@ -16,8 +17,10 @@ from datetime import date
 
 router = APIRouter(prefix="/resource-requests", tags=["resource-requests"])
 
+MANAGE = require_permission("resources.manage")
 
-@router.post("/", response_model=ResourceRequestResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post("", response_model=ResourceRequestResponse, status_code=status.HTTP_201_CREATED)
 def create_resource_request(
     request_data: ResourceRequestCreate,
     current_user: User = Depends(get_current_active_user),
@@ -62,14 +65,14 @@ def create_resource_request(
     return req
 
 
-@router.get("/", response_model=List[ResourceRequestResponse])
+@router.get("", response_model=List[ResourceRequestResponse])
 def get_resource_requests(
     status_filter: Optional[str] = Query(None, alias="status"),
     current_user: User = Depends(get_current_active_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
-    if current_user.role == "admin":
+    if current_user.role == "admin" or user_has_permission(db, current_user, "resources.manage"):
         query = db.query(ResourceRequest).filter(ResourceRequest.tenant_id == tenant.id)
     else:
         employee = db.query(Employee).filter(
@@ -91,7 +94,7 @@ def get_resource_requests(
 def approve_resource_request(
     request_id: int,
     decision: ResourceRequestDecide,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -133,7 +136,7 @@ def approve_resource_request(
 def reject_resource_request(
     request_id: int,
     decision: ResourceRequestDecide,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):

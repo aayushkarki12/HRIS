@@ -3,12 +3,17 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant
+from ...core.dependencies import get_current_active_user, get_current_tenant
+from ...core.permissions import require_permission
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.project import Project
 from ...models.employee import Employee
 from ...models.project_member import ProjectMember
+from ...models.assignment import Assignment
+from ...models.assignment_project import AssignmentProject
+from ...models.invoice import Invoice
+from ...models.timesheet import TimesheetEntry
 from ...schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
     ProjectMemberCreate, ProjectMemberResponse,
@@ -16,7 +21,9 @@ from ...schemas.project import (
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-@router.get("/", response_model=List[ProjectResponse])
+MANAGE = require_permission("projects.manage")
+
+@router.get("", response_model=List[ProjectResponse])
 def get_projects(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -61,10 +68,10 @@ def get_project(
         raise HTTPException(status_code=404, detail="Project not found")
     return project
 
-@router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project(
     project_data: ProjectCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -81,7 +88,7 @@ def create_project(
 def update_project(
     project_id: int,
     project_data: ProjectUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -106,7 +113,7 @@ def update_project(
 @router.delete("/{project_id}")
 def delete_project(
     project_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -120,6 +127,14 @@ def delete_project(
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # Detach everything that references this project first so the delete
+    # always succeeds — the referencing rows (assignments, invoices,
+    # timesheet entries) are kept, only their tie to this project is removed.
+    db.query(AssignmentProject).filter(AssignmentProject.project_id == project_id).delete()
+    db.query(Assignment).filter(Assignment.project_id == project_id).update({"project_id": None})
+    db.query(Invoice).filter(Invoice.project_id == project_id).update({"project_id": None})
+    db.query(TimesheetEntry).filter(TimesheetEntry.project_id == project_id).update({"project_id": None})
 
     db.delete(project)
     db.commit()
@@ -155,7 +170,7 @@ def get_project_members(
 def add_project_member(
     project_id: int,
     member_data: ProjectMemberCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -206,7 +221,7 @@ def add_project_member(
 def remove_project_member(
     project_id: int,
     employee_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):

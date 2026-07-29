@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant
+from ...core.dependencies import get_current_active_user, get_current_tenant
+from ...core.permissions import require_permission, user_has_permission
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.resource import Resource
@@ -13,10 +14,12 @@ from ...schemas.resource import ResourceCreate, ResourceUpdate, ResourceResponse
 
 router = APIRouter(prefix="/resources", tags=["resources"])
 
+MANAGE = require_permission("resources.manage")
+
 
 # ─── Collection + search ──────────────────────────────────────────────────────
 
-@router.get("/", response_model=List[ResourceResponse])
+@router.get("", response_model=List[ResourceResponse])
 def get_resources(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -107,7 +110,7 @@ def get_resource_requests(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
-    if current_user.role == "admin":
+    if current_user.role == "admin" or user_has_permission(db, current_user, "resources.manage"):
         query = db.query(ResourceRequest).filter(ResourceRequest.tenant_id == tenant.id)
     else:
         employee = db.query(Employee).filter(
@@ -129,7 +132,7 @@ def get_resource_requests(
 def approve_resource_request(
     request_id: int,
     decision: ResourceRequestDecide,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -158,7 +161,7 @@ def approve_resource_request(
 def reject_resource_request(
     request_id: int,
     decision: ResourceRequestDecide,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -196,10 +199,10 @@ def get_resource(
     return resource
 
 
-@router.post("/", response_model=ResourceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ResourceResponse, status_code=status.HTTP_201_CREATED)
 def create_resource(
     resource_data: ResourceCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -221,7 +224,7 @@ def create_resource(
 def update_resource(
     resource_id: int,
     resource_data: ResourceUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -243,7 +246,7 @@ def update_resource(
 @router.delete("/{resource_id}")
 def delete_resource(
     resource_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):

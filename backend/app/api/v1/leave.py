@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
+from ...core.permissions import user_has_permission
 from ...core.audit import record_audit_log
 from ...core.notifications import notify_user
 from ...models.user import User
@@ -85,7 +86,7 @@ def get_pending_leaves(
         employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
         if employee:
             query = query.join(Employee).filter(Employee.department == employee.department)
-    elif current_user.role not in ["admin", "manager"]:
+    elif current_user.role not in ["admin"] and not user_has_permission(db, current_user, "leave.approve"):
         employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
         if employee:
             query = query.filter(Leave.employee_id == employee.id)
@@ -118,7 +119,7 @@ def get_leave(
     
     return leave
 
-@router.post("/", response_model=LeaveResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LeaveResponse, status_code=status.HTTP_201_CREATED)
 def create_leave_request(
     leave_data: LeaveCreate,
     current_employee: Employee = Depends(get_current_employee),
@@ -201,9 +202,9 @@ def approve_leave(
         raise HTTPException(status_code=404, detail="Leave request not found")
     
     # Check authorization
-    if current_user.role not in ["admin", "manager"]:
+    if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "leave.approve"):
         raise HTTPException(status_code=403, detail="Not authorized to approve leaves")
-    
+
     if current_user.role == "manager":
         manager_employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
         employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
@@ -261,9 +262,9 @@ def reject_leave(
         raise HTTPException(status_code=404, detail="Leave request not found")
     
     # Check authorization (same as approve)
-    if current_user.role not in ["admin", "manager"]:
+    if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "leave.approve"):
         raise HTTPException(status_code=403, detail="Not authorized to reject leaves")
-    
+
     if current_user.role == "manager":
         manager_employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
         employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
@@ -340,6 +341,22 @@ def get_my_leave_balances(
     ).all()
     return balances
 
+# Probation employees get a reduced annual leave allocation vs. full-time -
+# half of the normal days_per_year, rounded to the nearest half day. This is
+# a policy judgment call (not a legal minimum), documented here and in
+# CLAUDE.md - an admin who wants a different ratio can change this constant.
+PROBATION_LEAVE_RATIO = 0.5
+
+
+def _allocated_days_for(employee: Employee, leave_type: LeaveType) -> float:
+    """Annual day allocation for one employee/leave-type, applying the
+    probation reduction when applicable."""
+    days = leave_type.days_per_year or 0
+    if employee.employment_type == "probation":
+        return round(days * PROBATION_LEAVE_RATIO * 2) / 2  # nearest half day
+    return days
+
+
 @router.post("/balances/calculate")
 def calculate_leave_balances(
     year: int,
@@ -347,20 +364,22 @@ def calculate_leave_balances(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Calculate leave balances for all employees (admin only)."""
+    """Calculate leave balances for all employees (admin only). Probation
+    employees (Employee.employment_type == "probation") get
+    PROBATION_LEAVE_RATIO of the normal allocation - see _allocated_days_for."""
     leave_types = db.query(LeaveType).filter(
         LeaveType.tenant_id == tenant.id,
         LeaveType.is_active == True
     ).all()
-    
+
     employees = db.query(Employee).filter(
         Employee.tenant_id == tenant.id,
         Employee.is_active == True
     ).all()
-    
+
     created_count = 0
     updated_count = 0
-    
+
     for employee in employees:
         for leave_type in leave_types:
             # Sum days from approved leaves in this year for this employee+type
@@ -373,6 +392,8 @@ def calculate_leave_balances(
             ).scalar()
             used_days = float(used_days_result or 0)
 
+            allocated_days = _allocated_days_for(employee, leave_type)
+
             balance = db.query(LeaveBalance).filter(
                 LeaveBalance.employee_id == employee.id,
                 LeaveBalance.leave_type_id == leave_type.id,
@@ -384,22 +405,22 @@ def calculate_leave_balances(
                     employee_id=employee.id,
                     leave_type_id=leave_type.id,
                     year=year,
-                    total_days=leave_type.days_per_year,
+                    total_days=allocated_days,
                     used_days=used_days,
-                    remaining_days=max(leave_type.days_per_year - used_days, 0),
+                    remaining_days=max(allocated_days - used_days, 0),
                     carried_over=0
                 )
                 db.add(balance)
                 created_count += 1
             else:
-                # Recalculate used_days from actual approved leaves and update total if type changed
+                # Recalculate used_days from actual approved leaves and update total if type/employment_type changed
                 balance.used_days = used_days
-                balance.total_days = leave_type.days_per_year
+                balance.total_days = allocated_days
                 balance.remaining_days = max(balance.total_days - used_days + balance.carried_over, 0)
                 updated_count += 1
-    
+
     db.commit()
-    
+
     return {
         "message": "Leave balances calculated successfully",
         "created": created_count,

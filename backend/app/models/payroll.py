@@ -11,6 +11,18 @@ class SalaryStructure(Base):
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     base_salary = Column(Float, nullable=False)
+    # Admin-editable one-off/recurring bonus amount, added on top of base_salary.
+    bonus = Column(Float, nullable=False, default=0)
+    # Admin-editable SSF (Nepal Social Security Fund) employee contribution,
+    # as a percent of base_salary. 10.0 is a DEFAULT PLACEHOLDER shown to the
+    # admin at entry time - NOT a verified current statutory rate. This app
+    # deliberately does not hardcode real Nepal tax/SSF percentages anywhere;
+    # the admin must confirm/adjust this value against current SSF rules
+    # before relying on it for real payroll (see CLAUDE.md).
+    ssf_percent = Column(Float, nullable=False, default=10.0)
+    # Flat catch-all for any other deduction the admin wants to record
+    # (loan repayment, salary advance, etc.) - shown as "Other Deductions".
+    other_deductions = Column(Float, nullable=False, default=0)
     currency = Column(String(10), default="USD", nullable=False)
     effective_date = Column(Date, nullable=False)
     is_active = Column(Boolean, default=True)

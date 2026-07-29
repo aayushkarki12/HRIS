@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_tenant
+from ...core.permissions import user_has_permission
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.audit_log import AuditLog
@@ -33,9 +34,11 @@ ENTITY_TYPE_TO_MODULE = {
 MODULES = sorted(set(ENTITY_TYPE_TO_MODULE.values())) + ["Other"]
 
 
-def _apply_filters(query, entity_type, entity_id, user_id, action, module, start_date, end_date):
+def _apply_filters(query, entity_type, entity_id, user_id, action, module, start_date, end_date, exclude_entity_type=None):
     if entity_type:
         query = query.filter(AuditLog.entity_type == entity_type)
+    if exclude_entity_type:
+        query = query.filter(AuditLog.entity_type != exclude_entity_type)
     if entity_id:
         query = query.filter(AuditLog.entity_id == entity_id)
     if user_id:
@@ -60,7 +63,7 @@ def _hydrate(log: AuditLog) -> AuditLog:
     return log
 
 
-@router.get("/", response_model=List[AuditLogResponse])
+@router.get("", response_model=List[AuditLogResponse])
 def get_audit_logs(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -71,16 +74,20 @@ def get_audit_logs(
     module: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    exclude_entity_type: Optional[str] = None,
     current_user: User = Depends(get_current_active_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """View the audit trail for this tenant (managers and admins only)."""
-    if current_user.role not in ("admin", "manager"):
+    """View the audit trail for this tenant (managers and admins only).
+    exclude_entity_type is used by the dashboard's Recent Activity widget to
+    hide routine login/logout ("auth") noise while still showing everything
+    on the full Audit Trail page."""
+    if current_user.role not in ("admin", "manager") and not user_has_permission(db, current_user, "audit_log.view"):
         return []
 
     query = db.query(AuditLog).options(joinedload(AuditLog.user)).filter(AuditLog.tenant_id == tenant.id)
-    query = _apply_filters(query, entity_type, entity_id, user_id, action, module, start_date, end_date)
+    query = _apply_filters(query, entity_type, entity_id, user_id, action, module, start_date, end_date, exclude_entity_type)
 
     logs = query.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()
     return [_hydrate(log) for log in logs]
@@ -93,7 +100,7 @@ def get_audit_log_meta(
     db: Session = Depends(get_db)
 ):
     """Distinct actions and entity types actually present in this tenant's audit log, for filter dropdowns."""
-    if current_user.role not in ("admin", "manager"):
+    if current_user.role not in ("admin", "manager") and not user_has_permission(db, current_user, "audit_log.view"):
         return {"actions": [], "entity_types": [], "modules": MODULES}
 
     actions = [r[0] for r in db.query(AuditLog.action).filter(AuditLog.tenant_id == tenant.id).distinct().all()]
@@ -115,7 +122,7 @@ def export_audit_logs(
     db: Session = Depends(get_db)
 ):
     """Export the (filtered) audit trail as CSV."""
-    if current_user.role not in ("admin", "manager"):
+    if current_user.role not in ("admin", "manager") and not user_has_permission(db, current_user, "audit_log.view"):
         return StreamingResponse(io.StringIO(""), media_type="text/csv")
 
     query = db.query(AuditLog).options(joinedload(AuditLog.user)).filter(AuditLog.tenant_id == tenant.id)

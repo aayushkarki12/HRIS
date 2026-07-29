@@ -5,7 +5,8 @@ from sqlalchemy import func
 from typing import List, Optional
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_admin_user, get_current_manager_user, get_current_tenant
+from ...core.dependencies import get_current_manager_user, get_current_tenant
+from ...core.permissions import require_permission
 from ...core.audit import record_audit_log
 from ...core.inventory_service import record_stock_in, record_stock_out, record_transfer, get_stock_position
 from ...models.user import User
@@ -22,6 +23,8 @@ from ...schemas.inventory import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/inventory", tags=["inventory"])
+
+MANAGE = require_permission("inventory.manage")
 
 
 # ============================================
@@ -44,7 +47,7 @@ def get_warehouses(
 @router.post("/warehouses", response_model=WarehouseResponse, status_code=status.HTTP_201_CREATED)
 def create_warehouse(
     data: WarehouseCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -61,7 +64,7 @@ def create_warehouse(
 @router.put("/warehouses/{warehouse_id}", response_model=WarehouseResponse)
 def update_warehouse(
     warehouse_id: int, data: WarehouseUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -78,7 +81,7 @@ def update_warehouse(
 @router.delete("/warehouses/{warehouse_id}")
 def deactivate_warehouse(
     warehouse_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -110,7 +113,7 @@ def get_categories(
 @router.post("/categories", response_model=ItemCategoryResponse, status_code=status.HTTP_201_CREATED)
 def create_category(
     data: ItemCategoryCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -127,7 +130,7 @@ def create_category(
 @router.put("/categories/{category_id}", response_model=ItemCategoryResponse)
 def update_category(
     category_id: int, data: ItemCategoryUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -144,7 +147,7 @@ def update_category(
 @router.delete("/categories/{category_id}")
 def deactivate_category(
     category_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -176,7 +179,7 @@ def get_units(
 @router.post("/units", response_model=UnitOfMeasureResponse, status_code=status.HTTP_201_CREATED)
 def create_unit(
     data: UnitOfMeasureCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -193,7 +196,7 @@ def create_unit(
 @router.put("/units/{unit_id}", response_model=UnitOfMeasureResponse)
 def update_unit(
     unit_id: int, data: UnitOfMeasureUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -210,7 +213,7 @@ def update_unit(
 @router.delete("/units/{unit_id}")
 def deactivate_unit(
     unit_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -245,7 +248,7 @@ def get_suppliers(
 @router.post("/suppliers", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
 def create_supplier(
     data: SupplierCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -262,7 +265,7 @@ def create_supplier(
 @router.put("/suppliers/{supplier_id}", response_model=SupplierResponse)
 def update_supplier(
     supplier_id: int, data: SupplierUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -279,7 +282,7 @@ def update_supplier(
 @router.delete("/suppliers/{supplier_id}")
 def deactivate_supplier(
     supplier_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -343,7 +346,7 @@ def get_item(
 @router.post("/items", response_model=ItemResponse, status_code=status.HTTP_201_CREATED)
 def create_item(
     data: ItemCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -378,7 +381,7 @@ def create_item(
 @router.put("/items/{item_id}", response_model=ItemResponse)
 def update_item(
     item_id: int, data: ItemUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -404,7 +407,7 @@ def update_item(
 @router.delete("/items/{item_id}")
 def deactivate_item(
     item_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -442,7 +445,7 @@ def get_movements(
 def stock_in(
     data: StockInRequest,
     contra_account_id: Optional[int] = None,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -476,7 +479,7 @@ def stock_in(
 def stock_out(
     data: StockOutRequest,
     contra_account_id: Optional[int] = None,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
@@ -509,7 +512,7 @@ def stock_out(
 @router.post("/movements/transfer", status_code=status.HTTP_201_CREATED)
 def stock_transfer(
     data: StockTransferRequest,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):

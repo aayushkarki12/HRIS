@@ -1,13 +1,26 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Optional, List
 from datetime import datetime, date
 
 
 # ============ Salary Structure Schemas ============
 
+# Default SSF (Nepal Social Security Fund) employee-contribution percentage
+# pre-filled in the admin UI when setting up a salary. This is a PLACEHOLDER
+# for the admin to verify/adjust, not a value this codebase asserts is the
+# current correct statutory rate - see CLAUDE.md and the SalaryStructure
+# model's ssf_percent column comment for why it's not hardcoded as fact.
+DEFAULT_SSF_PERCENT = 10.0
+
+
 class SalaryStructureBase(BaseModel):
     employee_id: int
     base_salary: float = Field(..., gt=0)
+    bonus: float = Field(0, ge=0)
+    ssf_percent: float = Field(DEFAULT_SSF_PERCENT, ge=0, le=100,
+                                description="Admin-editable SSF contribution % of base salary. "
+                                            "Default is a placeholder - verify against current SSF rules.")
+    other_deductions: float = Field(0, ge=0, description="Any other flat deduction (loan, advance, etc.)")
     currency: str = Field("USD", max_length=10)
     effective_date: date
     is_active: bool = True
@@ -19,6 +32,9 @@ class SalaryStructureCreate(SalaryStructureBase):
 
 class SalaryStructureUpdate(BaseModel):
     base_salary: Optional[float] = Field(None, gt=0)
+    bonus: Optional[float] = Field(None, ge=0)
+    ssf_percent: Optional[float] = Field(None, ge=0, le=100)
+    other_deductions: Optional[float] = Field(None, ge=0)
     currency: Optional[str] = Field(None, max_length=10)
     effective_date: Optional[date] = None
     is_active: Optional[bool] = None
@@ -32,6 +48,23 @@ class SalaryStructureResponse(SalaryStructureBase):
 
     class Config:
         from_attributes = True
+
+    @computed_field
+    @property
+    def ssf_amount(self) -> float:
+        """SSF deduction in currency, derived from base_salary * ssf_percent."""
+        return round(self.base_salary * (self.ssf_percent / 100.0), 2)
+
+    @computed_field
+    @property
+    def total_deductions(self) -> float:
+        return round(self.ssf_amount + self.other_deductions, 2)
+
+    @computed_field
+    @property
+    def net_pay(self) -> float:
+        """"Total in hand": base + bonus - all deductions."""
+        return round(self.base_salary + self.bonus - self.total_deductions, 2)
 
 
 # ============ Payslip Line Schemas ============

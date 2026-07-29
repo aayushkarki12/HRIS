@@ -20,6 +20,7 @@ from .resource_requests import router as resource_requests_router
 from .voucher import router as voucher_router
 from .inventory import router as inventory_router
 from .budget import router as budget_router
+from .rbac import router as rbac_router
 
 __all__ = [
     "auth_router",
@@ -44,4 +45,5 @@ __all__ = [
     "voucher_router",
     "inventory_router",
     "budget_router",
+    "rbac_router",
 ]

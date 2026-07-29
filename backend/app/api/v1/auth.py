@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta, date, datetime, timezone
@@ -17,17 +17,19 @@ from ...core.security import (
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from ...core.dependencies import get_current_active_user, get_current_tenant
-from ...core.limiter import limiter
 from ...core.audit import record_audit_log
 from ...models.user import User
 from ...models.employee import Employee
 from ...models.tenant import Tenant
 from ...models.refresh_token import RefreshToken
 from ...models.password_reset_token import PasswordResetToken
+from ...models.rbac import Role, SeniorityLevel
+from .employees import _generate_employee_id
 from ...schemas.user import (
     UserCreate, UserResponse, Token,
     RefreshTokenRequest, AccessTokenResponse,
     ForgotPasswordRequest, ResetPasswordRequest,
+    InvitationDetails, AcceptInvitationRequest,
 )
 from ...core.security import validate_password_strength
 from ...core.email import send_password_reset_email
@@ -35,6 +37,13 @@ from ...core.email import send_password_reset_email
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 60
 
 logger = logging.getLogger(__name__)
+
+# A bcrypt hash of a fixed, never-used password, computed once at import
+# time. When login is called with a username/email that doesn't exist, we
+# still run a bcrypt comparison against this instead of returning
+# immediately, so the response takes roughly as long as the "wrong password"
+# path and can't be used to tell the two cases apart by timing.
+_DUMMY_PASSWORD_HASH = get_password_hash("not-a-real-account-8f3c1e9a")
 
 
 def _issue_refresh_token(db: Session, user: User, tenant_id: int) -> str:
@@ -53,9 +62,7 @@ def _issue_refresh_token(db: Session, user: User, tenant_id: int) -> str:
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
 def register_user(
-    request: Request,
     user_data: UserCreate,
     db: Session = Depends(get_db)
 ):
@@ -104,9 +111,9 @@ def register_user(
     db.add(db_user)
     db.flush()
     
-    # Generate employee ID
-    employee_count = db.query(Employee).filter(Employee.tenant_id == tenant.id).count()
-    employee_id = f"EMP{employee_count + 1:04d}"
+    # Generate employee ID (same tenant-prefixed scheme as admin-created
+    # employees - see employees.py::_generate_employee_id)
+    employee_id = _generate_employee_id(db, tenant)
     
     # Create employee profile
     db_employee = Employee(
@@ -143,7 +150,6 @@ def test_tenant(
     }
 
 @router.post("/login", response_model=Token)
-@limiter.limit("10/minute")
 def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -158,6 +164,11 @@ def login(
     ).first()
 
     if not user:
+        # No tenant is resolvable for an unknown username/email (audit_logs.tenant_id
+        # is required), so this can't be logged the way a wrong-password attempt
+        # against a known user can - but we still pay the same bcrypt cost below so
+        # the response timing doesn't give away which case this was.
+        verify_password(form_data.password, _DUMMY_PASSWORD_HASH)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -228,10 +239,28 @@ def get_current_user_info(
     return current_user
 
 
+@router.get("/me/permissions")
+def get_current_user_permissions(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    The resolved set of permission keys the current user's role grants, for
+    the frontend to gate UI without duplicating the role->permission lookup.
+    A user still on the legacy "admin" string role (not yet assigned a Role
+    row) is reported as having every known permission, matching the backend's
+    own bypass in app.core.permissions.user_has_permission.
+    """
+    from ...core.permissions import PERMISSIONS, _legacy_admin_bypass, _user_permission_keys
+    if _legacy_admin_bypass(current_user):
+        keys = [key for key, _, _ in PERMISSIONS]
+    else:
+        keys = sorted(_user_permission_keys(db, current_user))
+    return {"permissions": keys, "role_id": current_user.role_id}
+
+
 @router.post("/refresh", response_model=AccessTokenResponse)
-@limiter.limit("30/minute")
 def refresh_access_token(
-    request: Request,
     data: RefreshTokenRequest,
     db: Session = Depends(get_db)
 ):
@@ -295,16 +324,21 @@ def logout(
 
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
-@limiter.limit("3/minute")
 def forgot_password(
-    request: Request,
     data: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
     Request a password reset email. Always returns the same generic message
     regardless of whether the email/tenant exists or the send succeeded -
     leaking that information would let an attacker enumerate valid accounts.
+
+    When the account exists, the actual email send happens in a background
+    task *after* the response is returned rather than inline - otherwise the
+    synchronous outbound call to the email provider makes that branch
+    measurably slower than the "no such account" branch, which is itself an
+    account-enumeration side channel via response timing.
     """
     generic_response = {"message": "If an account with that email exists, a password reset link has been sent."}
 
@@ -327,15 +361,13 @@ def forgot_password(
     db.commit()
 
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
-    send_password_reset_email(user.email, user.first_name, reset_link)
+    background_tasks.add_task(send_password_reset_email, user.email, user.first_name, reset_link)
 
     return generic_response
 
 
 @router.post("/reset-password", status_code=status.HTTP_200_OK)
-@limiter.limit("10/minute")
 def reset_password(
-    request: Request,
     data: ResetPasswordRequest,
     db: Session = Depends(get_db)
 ):
@@ -372,3 +404,102 @@ def reset_password(
     db.commit()
 
     return {"message": "Password has been reset successfully. Please log in with your new password."}
+
+
+def _get_valid_invite_token(db: Session, token: str) -> PasswordResetToken:
+    token_hash = hash_refresh_token(token)
+    db_token = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
+    if (
+        not db_token or not db_token.is_invite or db_token.used
+        or db_token.expires_at < datetime.now(timezone.utc)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This invitation link is invalid or has expired. Ask an admin to resend it.",
+        )
+    return db_token
+
+
+@router.get("/invitation", response_model=InvitationDetails)
+def get_invitation_details(token: str = Query(...), db: Session = Depends(get_db)):
+    """Public (token-gated, not login-gated) lookup of a pending employee
+    invite's read-only profile details, for the accept-invitation page."""
+    db_token = _get_valid_invite_token(db, token)
+
+    user = db.query(User).filter(User.id == db_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    employee = db.query(Employee).filter(Employee.user_id == user.id).first()
+    tenant = db.query(Tenant).filter(Tenant.id == db_token.tenant_id).first()
+    role = db.query(Role).filter(Role.id == user.role_id).first() if user.role_id else None
+    seniority = (
+        db.query(SeniorityLevel).filter(SeniorityLevel.id == employee.seniority_level_id).first()
+        if employee and employee.seniority_level_id else None
+    )
+
+    return InvitationDetails(
+        first_name=user.first_name,
+        last_name=user.last_name,
+        email=user.email,
+        employee_id=employee.employee_id if employee else "",
+        department=employee.department if employee else "",
+        position=employee.position if employee else "",
+        designation=role.name if role else None,
+        seniority_level=seniority.name if seniority else None,
+        joining_date=employee.joining_date if employee else None,
+        tenant_name=tenant.name if tenant else "",
+        username_suggestion=user.username,
+    )
+
+
+@router.get("/invitation/check-username")
+def check_invitation_username(token: str = Query(...), username: str = Query(...), db: Session = Depends(get_db)):
+    """Live availability check while the new hire is typing a username on
+    the accept-invitation page."""
+    db_token = _get_valid_invite_token(db, token)
+
+    if not username.isalnum() or len(username) < 3:
+        return {"available": False, "reason": "Must be at least 3 alphanumeric characters"}
+
+    taken = db.query(User).filter(
+        User.tenant_id == db_token.tenant_id,
+        User.username == username,
+        User.id != db_token.user_id,
+    ).first()
+    return {"available": taken is None}
+
+
+@router.post("/accept-invitation", status_code=status.HTTP_200_OK)
+def accept_invitation(data: AcceptInvitationRequest, db: Session = Depends(get_db)):
+    """Redeem an employee invite: pick a real username (replacing the
+    auto-generated placeholder) and set a password. Same single-use/expiry/
+    refresh-token-revocation handling as reset_password."""
+    db_token = _get_valid_invite_token(db, data.token)
+
+    password_error = validate_password_strength(data.password)
+    if password_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_error)
+
+    user = db.query(User).filter(User.id == db_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    existing = db.query(User).filter(
+        User.tenant_id == user.tenant_id,
+        User.username == data.username,
+        User.id != user.id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That username is already taken")
+
+    user.username = data.username
+    user.hashed_password = get_password_hash(data.password)
+    db_token.used = True
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False
+    ).update({"revoked": True})
+    db.commit()
+
+    return {"message": "Your account is set up. Please log in with your new username and password."}
