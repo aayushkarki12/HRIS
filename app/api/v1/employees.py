@@ -473,9 +473,10 @@ def get_employee(
 ):
     """Get employee by ID for the current tenant.
 
-    Non-admin/manager users may only view their own record or a colleague's
-    record in their own department - and even then, bank/SSN fields are
-    redacted unless the viewer is the employee themself or admin/manager.
+    Non-admin/manager users may only view their own record - not a colleague's,
+    even one in the same department (that's the employees.view_all permission,
+    or the legacy admin/manager roles). Bank/SSN fields are separately redacted
+    even for a self-view unless the viewer is also employees.view_sensitive.
     """
     try:
         employee = db.query(Employee).filter(
@@ -487,15 +488,10 @@ def get_employee(
             raise HTTPException(status_code=404, detail="Employee not found")
 
         if not _can_view_all(db, current_user) and employee.user_id != current_user.id:
-            me = db.query(Employee).filter(
-                Employee.user_id == current_user.id,
-                Employee.tenant_id == tenant.id
-            ).first()
-            if not me or me.department != employee.department:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not authorized to view this employee"
-                )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this employee"
+            )
 
         return _to_response(db, employee, current_user)
     except HTTPException:
@@ -514,8 +510,8 @@ def get_employee_history(
 ):
     """Career timeline: when they joined, plus every position/department/
     seniority change since (recorded by update_employee as a "career_change"
-    audit log entry). Same authorization as GET /{employee_id} - self, own
-    department, or admin/manager/employees.view_all.
+    audit log entry). Same authorization as GET /{employee_id} - self or
+    admin/manager/employees.view_all, not just any same-department colleague.
 
     Salary/compensation history isn't tracked here - that lives in the
     separate SalaryStructure/payroll system, which this doesn't touch."""
@@ -526,11 +522,7 @@ def get_employee_history(
         raise HTTPException(status_code=404, detail="Employee not found")
 
     if not _can_view_all(db, current_user) and employee.user_id != current_user.id:
-        me = db.query(Employee).filter(
-            Employee.user_id == current_user.id, Employee.tenant_id == tenant.id
-        ).first()
-        if not me or me.department != employee.department:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this employee")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this employee")
 
     logs = db.query(AuditLog).filter(
         AuditLog.tenant_id == tenant.id,
@@ -561,10 +553,69 @@ def get_employee_history(
         )
     ]
     for log in logs:
-        entries.append(EmployeeHistoryEntry(date=log.created_at, action="career_change", details=log.details or ""))
+        entries.append(EmployeeHistoryEntry(id=log.id, date=log.created_at, action="career_change", details=log.details or ""))
 
     entries.sort(key=lambda e: e.date)
     return entries
+
+
+@router.delete("/{employee_id}/history")
+def clear_employee_history(
+    employee_id: int,
+    current_user: User = Depends(EDIT),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Delete every career_change entry for this employee (admin/employees.edit
+    only). Only clears the recorded history - it does not touch the employee's
+    current position/department/seniority/employment_type, and the synthetic
+    "joined" entry (derived from joining_date) isn't affected since it isn't a
+    stored row."""
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id, Employee.tenant_id == tenant.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    deleted = db.query(AuditLog).filter(
+        AuditLog.tenant_id == tenant.id,
+        AuditLog.entity_type == "employee",
+        AuditLog.entity_id == employee.id,
+        AuditLog.action == "career_change",
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"message": f"Cleared {deleted} career history entr{'y' if deleted == 1 else 'ies'}"}
+
+
+@router.delete("/{employee_id}/history/{log_id}")
+def delete_employee_history_entry(
+    employee_id: int,
+    log_id: int,
+    current_user: User = Depends(EDIT),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Delete a single career_change entry (admin/employees.edit only). The
+    synthetic "joined" entry has no id and can't be targeted here."""
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id, Employee.tenant_id == tenant.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    log = db.query(AuditLog).filter(
+        AuditLog.id == log_id,
+        AuditLog.tenant_id == tenant.id,
+        AuditLog.entity_type == "employee",
+        AuditLog.entity_id == employee.id,
+        AuditLog.action == "career_change",
+    ).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="History entry not found")
+
+    db.delete(log)
+    db.commit()
+    return {"message": "History entry deleted"}
 
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)
