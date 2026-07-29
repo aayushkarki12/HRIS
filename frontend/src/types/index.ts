@@ -58,7 +58,11 @@ export interface Employee {
   user_id: number;
   user?: User;
   seniority_level_id?: number | null;
+  // "full_time" | "probation" - probation employees get a reduced leave
+  // allocation, see HRIS_backend app/api/v1/leave.py::PROBATION_LEAVE_RATIO.
+  employment_type?: 'full_time' | 'probation';
   invite_status?: 'invited' | 'expired' | 'accepted' | null;
+  projects?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -152,6 +156,12 @@ export interface EmployeeUpdate {
   position?: string;
   joining_date?: string;
   is_active?: boolean;
+  seniority_level_id?: number | null;
+  employment_type?: 'full_time' | 'probation';
+  // Not a stored field - only controls the timestamp of the resulting
+  // career_change audit-log entry on the backend (see EmployeeUpdate in
+  // HRIS_backend app/schemas/employee.py). Omit for "now".
+  effective_date?: string;
 }
 
 export interface ResourceCreate {
@@ -396,12 +406,22 @@ export interface SalaryStructure {
   id: number;
   employee_id: number;
   base_salary: number;
+  bonus: number;
+  // Admin-editable SSF (Nepal Social Security Fund) contribution % of base
+  // salary. Default (10%) is a placeholder, not a verified statutory rate -
+  // admins should confirm/adjust it.
+  ssf_percent: number;
+  other_deductions: number;
   currency: string;
   effective_date: string;
   is_active: boolean;
   tenant_id: number;
   created_at: string;
   updated_at?: string;
+  // Computed server-side from the fields above.
+  ssf_amount: number;
+  total_deductions: number;
+  net_pay: number;
 }
 
 export interface PayslipLine {
