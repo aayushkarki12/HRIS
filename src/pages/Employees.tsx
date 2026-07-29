@@ -27,21 +27,27 @@ import {
   InputAdornment,
   Avatar,
   Tooltip,
+  MenuItem,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  DeleteForever as DeleteForeverIcon,
   Search as SearchIcon,
   PersonOff as PersonOffIcon,
+  ContentCopy as CopyIcon,
+  CheckCircle as ActivateIcon,
+  MailOutlined as InviteIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
-import { employeeService, getErrorMessage } from '../services/api';
+import { employeeService, rbacService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Employee } from '../types';
 
+const NEW_DESIGNATION_SENTINEL = '__new__';
+
 const employeeSchema = z.object({
-  employee_id: z.string().min(2, 'Employee ID is required'),
   first_name: z.string().min(2, 'First name is required'),
   last_name: z.string().min(2, 'Last name is required'),
   email: z.string().email('Invalid email address'),
@@ -49,6 +55,8 @@ const employeeSchema = z.object({
   department: z.string().min(2, 'Department is required'),
   position: z.string().min(2, 'Position is required'),
   joining_date: z.string().min(1, 'Join date is required'),
+  seniority_level_id: z.string().optional(),
+  role_id: z.string().optional(),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -81,18 +89,61 @@ const Employees: React.FC = () => {
     queryFn: employeeService.getAll,
   });
 
-  const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<EmployeeFormData>({
+  const { data: seniorityLevels = [] } = useQuery({
+    queryKey: ['rbac-seniority-levels'],
+    queryFn: () => rbacService.getSeniorityLevels(),
+    enabled: isAdmin,
+  });
+  const seniorityName = (id?: number | null) => (seniorityLevels as any[]).find((l) => l.id === id)?.name;
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['rbac-departments'],
+    queryFn: () => rbacService.getDepartments(),
+    enabled: isAdmin,
+  });
+
+  const { data: roles = [], refetch: refetchRoles } = useQuery({
+    queryKey: ['rbac-roles'],
+    queryFn: () => rbacService.getRoles(),
+    enabled: isAdmin,
+  });
+
+  const [creatingDesignation, setCreatingDesignation] = useState(false);
+  const [newDesignationName, setNewDesignationName] = useState('');
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
+  });
+
+  const positionValue = watch('position');
+
+  const createRoleMutation = useMutation({
+    mutationFn: (name: string) => rbacService.createRole({ name, permission_keys: [] }),
+    onSuccess: async (newRole: any) => {
+      await refetchRoles();
+      setValue('position', newRole.name);
+      if (!editingId) {
+        setValue('role_id', String(newRole.id));
+      }
+      setCreatingDesignation(false);
+      setNewDesignationName('');
+      toast.success(`"${newRole.name}" created`);
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to create designation')),
   });
 
   const createMutation = useMutation({
     mutationFn: employeeService.create,
-    onSuccess: () => {
+    onSuccess: (created: any) => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       toast.success('Employee created successfully');
       setIsModalOpen(false);
       reset();
       setError('');
+      if (created?.invite_link) {
+        setInviteLink(created.invite_link);
+      }
     },
     onError: (err: any) => {
       const msg = getErrorMessage(err, 'Failed to create employee');
@@ -130,6 +181,38 @@ const Employees: React.FC = () => {
     },
   });
 
+  const activateMutation = useMutation({
+    mutationFn: employeeService.activate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success('Employee reactivated - their login works again');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to reactivate employee')),
+  });
+
+  const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<Employee | null>(null);
+  const permanentDeleteMutation = useMutation({
+    mutationFn: employeeService.permanentDelete,
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast.success(result?.message ?? 'Employee permanently deleted');
+      setPermanentDeleteTarget(null);
+    },
+    onError: (err: any) => {
+      toast.error(getErrorMessage(err, 'Failed to permanently delete employee'));
+      setPermanentDeleteTarget(null);
+    },
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: employeeService.resendInvite,
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setInviteLink(result.invite_link);
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to resend invite')),
+  });
+
   const filtered = useMemo(() => {
     if (!search.trim()) return employees as Employee[];
     const q = search.toLowerCase();
@@ -146,16 +229,22 @@ const Employees: React.FC = () => {
 
   const onSubmit = (data: EmployeeFormData) => {
     setError('');
+    const { seniority_level_id, role_id, ...rest } = data;
     if (editingId) {
-      updateMutation.mutate({ id: editingId, data });
+      const payload = { ...rest, seniority_level_id: seniority_level_id ? Number(seniority_level_id) : null };
+      updateMutation.mutate({ id: editingId, data: payload });
     } else {
-      createMutation.mutate(data);
+      const payload = {
+        ...rest,
+        seniority_level_id: seniority_level_id ? Number(seniority_level_id) : null,
+        role_id: role_id && role_id !== NEW_DESIGNATION_SENTINEL ? Number(role_id) : null,
+      };
+      createMutation.mutate(payload);
     }
   };
 
   const handleEdit = (employee: Employee) => {
     setEditingId(employee.id);
-    setValue('employee_id', employee.employee_id);
     setValue('first_name', employee.first_name);
     setValue('last_name', employee.last_name);
     setValue('email', employee.email);
@@ -163,6 +252,7 @@ const Employees: React.FC = () => {
     setValue('department', employee.department);
     setValue('position', employee.position);
     setValue('joining_date', employee.joining_date.split('T')[0]);
+    setValue('seniority_level_id', (employee as any).seniority_level_id ? String((employee as any).seniority_level_id) : '');
     setIsModalOpen(true);
     setError('');
   };
@@ -172,9 +262,12 @@ const Employees: React.FC = () => {
     reset();
     setEditingId(null);
     setError('');
+    setCreatingDesignation(false);
+    setNewDesignationName('');
   };
 
-  const colCount = isAdmin ? 7 : 6;
+  const colCount = isAdmin ? 9 : 8;
+  const editingEmployee = editingId ? (employees as Employee[]).find((e) => e.id === editingId) : null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
@@ -238,7 +331,9 @@ const Employees: React.FC = () => {
                   <TableCell>Email</TableCell>
                   <TableCell>Department</TableCell>
                   <TableCell>Position</TableCell>
+                  <TableCell>Seniority</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Login</TableCell>
                   {isAdmin && <TableCell align="right">Actions</TableCell>}
                 </TableRow>
               </TableHead>
@@ -284,12 +379,25 @@ const Employees: React.FC = () => {
                         <Typography variant="body2">{employee.position}</Typography>
                       </TableCell>
                       <TableCell>
+                        {seniorityName((employee as any).seniority_level_id) ? (
+                          <Chip label={seniorityName((employee as any).seniority_level_id)} size="small" variant="outlined" />
+                        ) : (
+                          <Typography variant="body2" color="text.disabled">-</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <Chip
                           label={employee.is_active ? 'Active' : 'Inactive'}
                           color={employee.is_active ? 'success' : 'default'}
                           size="small"
                           sx={{ fontWeight: 500 }}
                         />
+                      </TableCell>
+                      <TableCell>
+                        {employee.invite_status === 'invited' && <Chip label="Invited" color="warning" size="small" variant="outlined" />}
+                        {employee.invite_status === 'expired' && <Chip label="Expired" color="error" size="small" variant="outlined" />}
+                        {employee.invite_status === 'accepted' && <Chip label="Accepted" color="success" size="small" variant="outlined" />}
+                        {!employee.invite_status && <Typography variant="body2" color="text.disabled">-</Typography>}
                       </TableCell>
                       {isAdmin && (
                         <TableCell align="right">
@@ -299,16 +407,51 @@ const Employees: React.FC = () => {
                                 <EditIcon sx={{ fontSize: 16 }} />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Deactivate">
-                              <IconButton
-                                size="small"
-                                onClick={() => setDeleteTarget(employee)}
-                                color="error"
-                                disabled={!employee.is_active}
-                              >
-                                <DeleteIcon sx={{ fontSize: 16 }} />
-                              </IconButton>
-                            </Tooltip>
+                            {(employee.invite_status === 'invited' || employee.invite_status === 'expired') && (
+                              <Tooltip title="Copy a fresh invite link">
+                                <IconButton
+                                  size="small"
+                                  color="info"
+                                  disabled={resendInviteMutation.isPending}
+                                  onClick={() => resendInviteMutation.mutate(employee.id)}
+                                >
+                                  <InviteIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                            {employee.is_active ? (
+                              <Tooltip title="Deactivate - blocks their login">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setDeleteTarget(employee)}
+                                  color="error"
+                                >
+                                  <DeleteIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              </Tooltip>
+                            ) : (
+                              <>
+                                <Tooltip title="Reactivate - restores their login">
+                                  <IconButton
+                                    size="small"
+                                    color="success"
+                                    disabled={activateMutation.isPending}
+                                    onClick={() => activateMutation.mutate(employee.id)}
+                                  >
+                                    <ActivateIcon sx={{ fontSize: 16 }} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Delete permanently - cannot be undone">
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => setPermanentDeleteTarget(employee)}
+                                  >
+                                    <DeleteForeverIcon sx={{ fontSize: 16 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              </>
+                            )}
                           </Box>
                         </TableCell>
                       )}
@@ -330,23 +473,24 @@ const Employees: React.FC = () => {
 
         {/* Add / Edit dialog */}
         <Dialog open={isModalOpen} onClose={handleCloseModal} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ pb: 1 }}>
+          <DialogTitle sx={{ pb: editingEmployee ? 0 : 1 }}>
             {editingId ? 'Edit Employee' : 'Add Employee'}
+            {editingEmployee && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontFamily: 'monospace' }}>
+                {editingEmployee.employee_id}
+              </Typography>
+            )}
           </DialogTitle>
           <form onSubmit={handleSubmit(onSubmit)}>
             <DialogContent sx={{ pt: 1 }}>
               {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+              {!editingId && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Employee ID is generated automatically. A login will also be created and you'll get an invite
+                  link to share with them so they can set their own username and password.
+                </Alert>
+              )}
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                <TextField
-                  fullWidth
-                  label="Employee ID"
-                  {...register('employee_id')}
-                  error={!!errors.employee_id}
-                  helperText={errors.employee_id?.message}
-                  size="small"
-                  disabled={!!editingId}
-                  sx={{ gridColumn: '1 / -1' }}
-                />
                 <TextField
                   fullWidth
                   label="First Name"
@@ -384,20 +528,21 @@ const Employees: React.FC = () => {
                 />
                 <TextField
                   fullWidth
+                  select
                   label="Department"
+                  defaultValue=""
                   {...register('department')}
                   error={!!errors.department}
                   helperText={errors.department?.message}
                   size="small"
-                />
-                <TextField
-                  fullWidth
-                  label="Position"
-                  {...register('position')}
-                  error={!!errors.position}
-                  helperText={errors.position?.message}
-                  size="small"
-                />
+                >
+                  {editingEmployee?.department && !(departments as any[]).some((d) => d.name === editingEmployee.department) && (
+                    <MenuItem value={editingEmployee.department}>{editingEmployee.department} (not in list)</MenuItem>
+                  )}
+                  {(departments as any[]).map((d) => (
+                    <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>
+                  ))}
+                </TextField>
                 <TextField
                   fullWidth
                   label="Join Date"
@@ -409,6 +554,78 @@ const Employees: React.FC = () => {
                   sx={{ gridColumn: '1 / -1' }}
                   slotProps={{ inputLabel: { shrink: true } }}
                 />
+                <TextField
+                  fullWidth
+                  select
+                  label="Seniority Level"
+                  defaultValue=""
+                  {...register('seniority_level_id')}
+                  error={!!errors.seniority_level_id}
+                  helperText={errors.seniority_level_id?.message || 'Affects approval limits, e.g. how large an invoice a Senior Accountant can approve'}
+                  size="small"
+                  sx={{ gridColumn: '1 / -1' }}
+                >
+                  <MenuItem value="">None</MenuItem>
+                  {(seniorityLevels as any[]).map((level) => (
+                    <MenuItem key={level.id} value={String(level.id)}>{level.name}</MenuItem>
+                  ))}
+                </TextField>
+                {creatingDesignation ? (
+                  <Box sx={{ display: 'flex', gap: 1, gridColumn: '1 / -1' }}>
+                    <TextField
+                      fullWidth
+                      autoFocus
+                      label="New Position / Designation"
+                      value={newDesignationName}
+                      onChange={(e) => setNewDesignationName(e.target.value)}
+                      size="small"
+                      placeholder="e.g. Senior Developer"
+                    />
+                    <Button
+                      variant="contained"
+                      size="small"
+                      disabled={!newDesignationName.trim() || createRoleMutation.isPending}
+                      onClick={() => createRoleMutation.mutate(newDesignationName.trim())}
+                    >
+                      Add
+                    </Button>
+                    <Button size="small" color="inherit" onClick={() => { setCreatingDesignation(false); setNewDesignationName(''); }}>
+                      Cancel
+                    </Button>
+                  </Box>
+                ) : (
+                  <TextField
+                    fullWidth
+                    select
+                    label="Position / Designation"
+                    value={positionValue ?? ''}
+                    onChange={(e) => {
+                      if (e.target.value === NEW_DESIGNATION_SENTINEL) {
+                        setCreatingDesignation(true);
+                        return;
+                      }
+                      setValue('position', e.target.value);
+                      if (!editingId) {
+                        const role = (roles as any[]).find((r) => r.name === e.target.value);
+                        setValue('role_id', role ? String(role.id) : '');
+                      }
+                    }}
+                    error={!!errors.position}
+                    helperText={errors.position?.message || (editingId
+                      ? 'Updates their job title. To change what permissions their login has, use Users & Roles.'
+                      : "Sets the job title and grants the new login this designation's permissions")}
+                    size="small"
+                    sx={{ gridColumn: '1 / -1' }}
+                  >
+                    {positionValue && !(roles as any[]).some((r) => r.name === positionValue) && (
+                      <MenuItem value={positionValue}>{positionValue} (not in list)</MenuItem>
+                    )}
+                    {(roles as any[]).map((r) => (
+                      <MenuItem key={r.id} value={r.name}>{r.name}</MenuItem>
+                    ))}
+                    <MenuItem value={NEW_DESIGNATION_SENTINEL} sx={{ fontStyle: 'italic' }}>+ Create New…</MenuItem>
+                  </TextField>
+                )}
               </Box>
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -445,7 +662,7 @@ const Employees: React.FC = () => {
             <Typography variant="body2" color="text.secondary">
               Are you sure you want to deactivate{' '}
               <strong>{deleteTarget?.first_name} {deleteTarget?.last_name}</strong>?
-              They will no longer be able to access the system.
+              Their login will be blocked immediately - you can reactivate it later from this page.
             </Typography>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -458,6 +675,81 @@ const Employees: React.FC = () => {
             >
               {deleteMutation.isPending ? 'Deactivating…' : 'Deactivate'}
             </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Permanent delete confirmation dialog (only reachable once an employee is already deactivated) */}
+        <Dialog open={!!permanentDeleteTarget} onClose={() => setPermanentDeleteTarget(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ pb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  bgcolor: '#FEF2F2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <DeleteForeverIcon sx={{ fontSize: 18, color: 'error.main' }} />
+              </Box>
+              Delete Permanently
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="error" sx={{ mb: 2 }}>This cannot be undone.</Alert>
+            <Typography variant="body2" color="text.secondary">
+              Permanently delete <strong>{permanentDeleteTarget?.first_name} {permanentDeleteTarget?.last_name}</strong> and
+              their login? Their timesheets, leave, attendance, and assignments will be deleted too. If they have
+              related records elsewhere (approvals, vouchers, invoices, etc.) this will be rejected - deactivate
+              them instead in that case.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setPermanentDeleteTarget(null)} color="inherit">Cancel</Button>
+            <Button
+              variant="contained"
+              color="error"
+              disabled={permanentDeleteMutation.isPending}
+              onClick={() => permanentDeleteTarget && permanentDeleteMutation.mutate(permanentDeleteTarget.id)}
+            >
+              {permanentDeleteMutation.isPending ? 'Deleting…' : 'Delete Permanently'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Invite link result (shown once, right after creating an employee) */}
+        <Dialog open={!!inviteLink} onClose={() => setInviteLink(null)} maxWidth="sm" fullWidth>
+          <DialogTitle>Invite Link</DialogTitle>
+          <DialogContent>
+            <Alert severity="success" sx={{ mb: 2 }}>
+              Send this invite link to the new employee - it lets them see their details and set their own
+              username and password. It won't be shown again.
+            </Alert>
+            <TextField
+              fullWidth
+              value={inviteLink ?? ''}
+              size="small"
+              slotProps={{
+                input: {
+                  readOnly: true,
+                  endAdornment: (
+                    <IconButton
+                      size="small"
+                      onClick={() => { if (inviteLink) { navigator.clipboard.writeText(inviteLink); toast.success('Copied'); } }}
+                    >
+                      <CopyIcon fontSize="small" />
+                    </IconButton>
+                  ),
+                },
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setInviteLink(null)} variant="contained">Done</Button>
           </DialogActions>
         </Dialog>
       </Box>

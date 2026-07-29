@@ -1,7 +1,8 @@
 import ErrorBoundary from "./ErrorBoundary";
 import PrivateRoute from "./common/PrivateRoute";
+import RequireRole from "./common/RequireRole";
 
-export { ErrorBoundary, PrivateRoute };
+export { ErrorBoundary, PrivateRoute, RequireRole };
 
 export interface User {
   id: number;

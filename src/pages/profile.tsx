@@ -34,7 +34,7 @@ import { useNavigate } from 'react-router-dom';
 import { employeeService, userService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-const API_BASE = 'http://localhost:8010';
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8010/api/v1').replace(/\/api\/v1\/?$/, '');
 
 const profileSchema = z.object({
   first_name: z.string().min(2, 'Required'),
