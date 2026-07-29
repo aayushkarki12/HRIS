@@ -12,6 +12,7 @@ import ResetPassword from './pages/ResetPassword';
 import AcceptInvitation from './pages/AcceptInvitation';
 import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';
+import EmployeeDetail from './pages/EmployeeDetail';
 import Resources from './pages/Resources';
 import Projects from './pages/Projects';
 import Assignments from './pages/Assignments';
@@ -58,6 +59,7 @@ function App() {
             <Route index element={<Navigate to="/dashboard" />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="employees" element={<Employees />} />
+            <Route path="employees/:id" element={<RequireRole role="admin"><EmployeeDetail /></RequireRole>} />
             <Route path="resources" element={<Resources />} />
             <Route path="projects" element={<Projects />} />
             <Route path="assignments" element={<Assignments />} />

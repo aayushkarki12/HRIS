@@ -305,6 +305,11 @@ export const employeeService = {
     return response.data;
   },
 
+  deleteAvatar: async () => {
+    const response = await api.delete('/employees/me/avatar');
+    return response.data;
+  },
+
   getStats: async () => {
     const response = await api.get('/employees/stats');
     return response.data;
@@ -337,6 +342,11 @@ export const employeeService = {
 
   resendInvite: async (id: number): Promise<{ invite_link: string }> => {
     const response = await api.post(`/employees/${id}/resend-invite`);
+    return response.data;
+  },
+
+  getHistory: async (id: number): Promise<{ date: string; action: string; details: string }[]> => {
+    const response = await api.get(`/employees/${id}/history`);
     return response.data;
   },
 };
@@ -503,6 +513,11 @@ export const assignmentService = {
 export const documentService = {
   getMyDocuments: async () => {
     const response = await api.get('/documents/my');
+    return response.data;
+  },
+
+  getAll: async () => {
+    const response = await api.get('/documents');
     return response.data;
   },
 
@@ -1074,7 +1089,7 @@ export const invoiceService = {
 // ============ AUDIT LOG SERVICE ============
 export const auditLogService = {
   getRecent: async (limit = 10) => {
-    const response = await api.get('/audit-logs', { params: { limit } });
+    const response = await api.get('/audit-logs', { params: { limit, exclude_entity_type: 'auth' } });
     return response.data;
   },
   getByEntity: async (entity_type: string, entity_id: number, limit = 50) => {
