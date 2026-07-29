@@ -15,6 +15,7 @@ import Employees from './pages/Employees';
 import EmployeeDetail from './pages/EmployeeDetail';
 import Resources from './pages/Resources';
 import Projects from './pages/Projects';
+import ProjectDetail from './pages/ProjectDetail';
 import Assignments from './pages/Assignments';
 import Documents from './pages/Document';
 import Leaves from './pages/Leaves';
@@ -59,9 +60,10 @@ function App() {
             <Route index element={<Navigate to="/dashboard" />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="employees" element={<Employees />} />
-            <Route path="employees/:id" element={<RequireRole role="admin"><EmployeeDetail /></RequireRole>} />
+            <Route path="employees/:id" element={<EmployeeDetail />} />
             <Route path="resources" element={<Resources />} />
             <Route path="projects" element={<Projects />} />
+            <Route path="projects/:id" element={<ProjectDetail />} />
             <Route path="assignments" element={<Assignments />} />
             <Route path="documents" element={<Documents />} />
             <Route path="leaves" element={<Leaves />} />

@@ -345,8 +345,18 @@ export const employeeService = {
     return response.data;
   },
 
-  getHistory: async (id: number): Promise<{ date: string; action: string; details: string }[]> => {
+  getHistory: async (id: number): Promise<{ id: number | null; date: string; action: string; details: string }[]> => {
     const response = await api.get(`/employees/${id}/history`);
+    return response.data;
+  },
+
+  deleteHistoryEntry: async (id: number, logId: number) => {
+    const response = await api.delete(`/employees/${id}/history/${logId}`);
+    return response.data;
+  },
+
+  clearHistory: async (id: number) => {
+    const response = await api.delete(`/employees/${id}/history`);
     return response.data;
   },
 };
@@ -467,6 +477,11 @@ export const projectService = {
 
   removeMember: async (projectId: number, employeeId: number) => {
     const response = await api.delete(`/projects/${projectId}/members/${employeeId}`);
+    return response.data;
+  },
+
+  updateMemberRole: async (projectId: number, employeeId: number, role: string | null) => {
+    const response = await api.put(`/projects/${projectId}/members/${employeeId}`, { role });
     return response.data;
   },
 };

@@ -30,6 +30,8 @@ import {
   DeleteForever as DeleteForeverIcon,
   WorkHistory as JoinedIcon,
   TrendingUp as PromotionIcon,
+  DeleteOutlined as DeleteEntryIcon,
+  DeleteSweep as ClearHistoryIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { employeeService, rbacService, payrollService, getErrorMessage } from '../services/api';
@@ -58,7 +60,7 @@ const EmployeeDetail: React.FC = () => {
   const { id } = useParams();
   const employeeId = Number(id);
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
 
   const invalidateEmployee = () => {
@@ -67,11 +69,14 @@ const EmployeeDetail: React.FC = () => {
     queryClient.invalidateQueries({ queryKey: ['employee-history', employeeId] });
   };
 
-  const { data: employee, isLoading } = useQuery({
+  const { data: employee, isLoading, isError, error } = useQuery({
     queryKey: ['employee', employeeId],
     queryFn: () => employeeService.getById(employeeId),
     enabled: !!employeeId,
+    retry: false,
   });
+
+  const isOwnProfile = !!employee && employee.user_id === user?.id;
 
   const { data: departments = [] } = useQuery({
     queryKey: ['rbac-departments'],
@@ -92,6 +97,35 @@ const EmployeeDetail: React.FC = () => {
     queryKey: ['employee-history', employeeId],
     queryFn: () => employeeService.getHistory(employeeId),
     enabled: !!employeeId,
+  });
+
+  const [deleteHistoryTarget, setDeleteHistoryTarget] = useState<number | null>(null);
+  const [clearHistoryConfirmOpen, setClearHistoryConfirmOpen] = useState(false);
+
+  const deleteHistoryMutation = useMutation({
+    mutationFn: (logId: number) => employeeService.deleteHistoryEntry(employeeId, logId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employee-history', employeeId] });
+      toast.success('History entry deleted');
+      setDeleteHistoryTarget(null);
+    },
+    onError: (err: any) => {
+      toast.error(getErrorMessage(err, 'Failed to delete history entry'));
+      setDeleteHistoryTarget(null);
+    },
+  });
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: () => employeeService.clearHistory(employeeId),
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ['employee-history', employeeId] });
+      toast.success(result?.message ?? 'Career history cleared');
+      setClearHistoryConfirmOpen(false);
+    },
+    onError: (err: any) => {
+      toast.error(getErrorMessage(err, 'Failed to clear career history'));
+      setClearHistoryConfirmOpen(false);
+    },
   });
 
   const { data: salaryStructures = [], isLoading: salaryLoading } = useQuery({
@@ -171,6 +205,19 @@ const EmployeeDetail: React.FC = () => {
     },
     onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to update employment details')),
   });
+
+  // The backend only writes a career-history entry when seniority_level_id or
+  // employment_type actually differs from the employee's current value -
+  // effective_date has nothing to attach to on its own (it's not a column,
+  // just the timestamp for that entry). Without this check, saving after
+  // only touching the date silently no-ops while still showing success.
+  const employmentUnchanged = useMemo(() => {
+    if (!employee) return true;
+    const currentSeniority = employee.seniority_level_id ?? null;
+    const formSeniority = employmentForm.seniority_level_id === '' ? null : Number(employmentForm.seniority_level_id);
+    const currentType = employee.employment_type === 'probation' ? 'probation' : 'full_time';
+    return formSeniority === currentSeniority && employmentForm.employment_type === currentType;
+  }, [employee, employmentForm.seniority_level_id, employmentForm.employment_type]);
 
   // ============ Compensation ============
   const emptySalaryForm = {
@@ -270,15 +317,29 @@ const EmployeeDetail: React.FC = () => {
     },
   });
 
-  if (!isAdmin) return null; // route is already gated by RequireRole; belt and suspenders
-
-  if (isLoading || !employee) {
+  if (isLoading) {
     return (
       <Box>
         <Skeleton width={120} height={32} sx={{ mb: 2 }} />
         <Skeleton variant="rectangular" height={100} sx={{ mb: 2, borderRadius: 2 }} />
         <Skeleton variant="rectangular" height={220} sx={{ mb: 2, borderRadius: 2 }} />
         <Skeleton variant="rectangular" height={220} sx={{ borderRadius: 2 }} />
+      </Box>
+    );
+  }
+
+  if (isError || !employee) {
+    const status = (error as any)?.response?.status;
+    return (
+      <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+        <Button startIcon={<BackIcon />} onClick={() => navigate('/employees')} size="small" sx={{ mb: 2 }} color="inherit">
+          Back to Employees
+        </Button>
+        <Alert severity={status === 403 ? 'warning' : 'error'}>
+          {status === 403
+            ? "You're not authorized to view this employee's details."
+            : 'Employee not found.'}
+        </Alert>
       </Box>
     );
   }
@@ -315,30 +376,30 @@ const EmployeeDetail: React.FC = () => {
         </Paper>
 
         {/* Basic info */}
-        <SectionPaper title="Basic Info">
+        <SectionPaper title="Basic Info" subtitle={!isAdmin ? 'View only.' : undefined}>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
             <TextField
-              fullWidth size="small" label="First Name"
+              fullWidth size="small" label="First Name" disabled={!isAdmin}
               value={basicForm.first_name}
               onChange={(e) => setBasicForm({ ...basicForm, first_name: e.target.value })}
             />
             <TextField
-              fullWidth size="small" label="Last Name"
+              fullWidth size="small" label="Last Name" disabled={!isAdmin}
               value={basicForm.last_name}
               onChange={(e) => setBasicForm({ ...basicForm, last_name: e.target.value })}
             />
             <TextField
-              fullWidth size="small" label="Email" type="email" sx={{ gridColumn: '1 / -1' }}
+              fullWidth size="small" label="Email" type="email" sx={{ gridColumn: '1 / -1' }} disabled={!isAdmin}
               value={basicForm.email}
               onChange={(e) => setBasicForm({ ...basicForm, email: e.target.value })}
             />
             <TextField
-              fullWidth size="small" label="Phone" sx={{ gridColumn: '1 / -1' }}
+              fullWidth size="small" label="Phone" sx={{ gridColumn: '1 / -1' }} disabled={!isAdmin}
               value={basicForm.phone}
               onChange={(e) => setBasicForm({ ...basicForm, phone: e.target.value })}
             />
             <TextField
-              fullWidth select size="small" label="Department"
+              fullWidth select size="small" label="Department" disabled={!isAdmin}
               value={basicForm.department}
               onChange={(e) => setBasicForm({ ...basicForm, department: e.target.value })}
             >
@@ -350,12 +411,12 @@ const EmployeeDetail: React.FC = () => {
               ))}
             </TextField>
             <TextField
-              fullWidth size="small" label="Join Date" type="date"
+              fullWidth size="small" label="Join Date" type="date" disabled={!isAdmin}
               value={basicForm.joining_date}
               onChange={(e) => setBasicForm({ ...basicForm, joining_date: e.target.value })}
               slotProps={{ inputLabel: { shrink: true } }}
             />
-            {creatingDesignation ? (
+            {isAdmin && creatingDesignation ? (
               <Box sx={{ display: 'flex', gap: 1, gridColumn: '1 / -1' }}>
                 <TextField
                   fullWidth autoFocus size="small" label="New Position / Designation"
@@ -376,7 +437,7 @@ const EmployeeDetail: React.FC = () => {
               </Box>
             ) : (
               <TextField
-                fullWidth select size="small" label="Position / Designation" sx={{ gridColumn: '1 / -1' }}
+                fullWidth select size="small" label="Position / Designation" sx={{ gridColumn: '1 / -1' }} disabled={!isAdmin}
                 value={basicForm.position}
                 onChange={(e) => {
                   if (e.target.value === NEW_DESIGNATION_SENTINEL) {
@@ -385,7 +446,7 @@ const EmployeeDetail: React.FC = () => {
                   }
                   setBasicForm({ ...basicForm, position: e.target.value });
                 }}
-                helperText="Updates their job title. To change what permissions their login has, use Users & Roles."
+                helperText={isAdmin ? 'Updates their job title. To change what permissions their login has, use Users & Roles.' : undefined}
               >
                 {basicForm.position && !(roles as any[]).some((r) => r.name === basicForm.position) && (
                   <MenuItem value={basicForm.position}>{basicForm.position} (not in list)</MenuItem>
@@ -393,32 +454,36 @@ const EmployeeDetail: React.FC = () => {
                 {(roles as any[]).map((r) => (
                   <MenuItem key={r.id} value={r.name}>{r.name}</MenuItem>
                 ))}
-                <MenuItem value={NEW_DESIGNATION_SENTINEL} sx={{ fontStyle: 'italic' }}>+ Create New…</MenuItem>
+                {isAdmin && <MenuItem value={NEW_DESIGNATION_SENTINEL} sx={{ fontStyle: 'italic' }}>+ Create New…</MenuItem>}
               </TextField>
             )}
           </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-            <Button
-              variant="contained"
-              disabled={updateBasicMutation.isPending}
-              onClick={() => updateBasicMutation.mutate(basicForm)}
-            >
-              {updateBasicMutation.isPending ? 'Saving…' : 'Save Basic Info'}
-            </Button>
-          </Box>
+          {isAdmin && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              <Button
+                variant="contained"
+                disabled={updateBasicMutation.isPending}
+                onClick={() => updateBasicMutation.mutate(basicForm)}
+              >
+                {updateBasicMutation.isPending ? 'Saving…' : 'Save Basic Info'}
+              </Button>
+            </Box>
+          )}
         </SectionPaper>
 
         {/* Employment & promotion */}
         <SectionPaper
           title="Employment & Promotion"
-          subtitle="Recording a change here also adds an entry to Career History below, timestamped at the Effective Date - this is how a promotion is done."
+          subtitle={isAdmin
+            ? 'Recording a change here also adds an entry to Career History below, timestamped at the Effective Date - this is how a promotion is done.'
+            : 'View only.'}
         >
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
             <TextField
-              fullWidth select size="small" label="Seniority Level"
+              fullWidth select size="small" label="Seniority Level" disabled={!isAdmin}
               value={employmentForm.seniority_level_id === null ? '' : String(employmentForm.seniority_level_id)}
               onChange={(e) => setEmploymentForm({ ...employmentForm, seniority_level_id: e.target.value })}
-              helperText="Affects approval limits, e.g. how large an invoice a Senior Accountant can approve"
+              helperText={isAdmin ? 'Affects approval limits, e.g. how large an invoice a Senior Accountant can approve' : undefined}
             >
               <MenuItem value="">None</MenuItem>
               {(seniorityLevels as any[]).map((level) => (
@@ -426,122 +491,147 @@ const EmployeeDetail: React.FC = () => {
               ))}
             </TextField>
             <TextField
-              fullWidth select size="small" label="Employment Status"
+              fullWidth select size="small" label="Employment Status" disabled={!isAdmin}
               value={employmentForm.employment_type}
               onChange={(e) => setEmploymentForm({ ...employmentForm, employment_type: e.target.value as 'full_time' | 'probation' })}
-              helperText="Probation employees get a reduced leave allocation until confirmed"
+              helperText={isAdmin ? 'Probation employees get a reduced leave allocation until confirmed' : undefined}
             >
               <MenuItem value="full_time">Full-time</MenuItem>
               <MenuItem value="probation">Probation</MenuItem>
             </TextField>
-            <TextField
-              fullWidth size="small" label="Effective Date" type="date" sx={{ gridColumn: '1 / -1' }}
-              value={employmentForm.effective_date}
-              onChange={(e) => setEmploymentForm({ ...employmentForm, effective_date: e.target.value })}
-              helperText="When this change takes effect - controls where it lands on the career history timeline, not just when it's saved"
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
+            {isAdmin && (
+              <TextField
+                fullWidth size="small" label="Effective Date" type="date" sx={{ gridColumn: '1 / -1' }}
+                value={employmentForm.effective_date}
+                onChange={(e) => setEmploymentForm({ ...employmentForm, effective_date: e.target.value })}
+                helperText="When this change takes effect - controls where it lands on the career history timeline, not just when it's saved"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            )}
           </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-            <Button
-              variant="contained"
-              disabled={updateEmploymentMutation.isPending}
-              onClick={() => updateEmploymentMutation.mutate({
-                seniority_level_id: employmentForm.seniority_level_id === '' ? null : Number(employmentForm.seniority_level_id),
-                employment_type: employmentForm.employment_type,
-                effective_date: employmentForm.effective_date,
-              })}
-            >
-              {updateEmploymentMutation.isPending ? 'Saving…' : 'Save / Promote'}
-            </Button>
-          </Box>
-        </SectionPaper>
-
-        {/* Compensation */}
-        <SectionPaper title="Compensation">
-          {salaryLoading ? (
-            <Skeleton variant="rectangular" height={80} />
-          ) : !activeSalary && !settingUpSalary ? (
-            <Box sx={{ textAlign: 'center', py: 3 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>No salary set</Typography>
-              <Button variant="contained" size="small" onClick={() => setSettingUpSalary(true)}>Set Salary</Button>
-            </Box>
-          ) : (
-            <>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                <TextField
-                  fullWidth size="small" label="Base Monthly Salary" type="number"
-                  value={salaryForm.base_salary}
-                  onChange={(e) => setSalaryForm({ ...salaryForm, base_salary: e.target.value })}
-                  slotProps={{ htmlInput: { min: 0, step: 100 } }}
-                />
-                <TextField
-                  fullWidth size="small" label="Bonus" type="number"
-                  value={salaryForm.bonus}
-                  onChange={(e) => setSalaryForm({ ...salaryForm, bonus: e.target.value })}
-                  helperText="One-off or recurring bonus, added on top of base salary"
-                  slotProps={{ htmlInput: { min: 0, step: 100 } }}
-                />
-                <TextField
-                  fullWidth size="small" label="SSF Deduction %" type="number"
-                  value={salaryForm.ssf_percent}
-                  onChange={(e) => setSalaryForm({ ...salaryForm, ssf_percent: e.target.value })}
-                  helperText={`Placeholder default (${DEFAULT_SSF_PERCENT}%) - verify/adjust against current SSF rules.`}
-                  slotProps={{ htmlInput: { min: 0, max: 100, step: 0.5 } }}
-                />
-                <TextField
-                  fullWidth size="small" label="Other Deductions" type="number"
-                  value={salaryForm.other_deductions}
-                  onChange={(e) => setSalaryForm({ ...salaryForm, other_deductions: e.target.value })}
-                  helperText="Any other flat deduction - loan repayment, advance, etc."
-                  slotProps={{ htmlInput: { min: 0, step: 100 } }}
-                />
-                <TextField
-                  fullWidth size="small" label="Effective Date" type="date" sx={{ gridColumn: '1 / -1' }}
-                  value={salaryForm.effective_date}
-                  onChange={(e) => setSalaryForm({ ...salaryForm, effective_date: e.target.value })}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                />
-              </Box>
-
-              {salaryForm.base_salary && (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  <Typography variant="body2">SSF Deduction: {fmt(salaryPreview.ssfAmount)}</Typography>
-                  <Typography variant="body2">Total Deductions: {fmt(salaryPreview.totalDeductions)}</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>Net Pay (Total in Hand): {fmt(salaryPreview.netPay)}</Typography>
-                </Alert>
+          {isAdmin && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1.5, mt: 2 }}>
+              {employmentUnchanged && (
+                <Typography variant="caption" color="text.secondary">
+                  Change Seniority Level or Employment Status to record a promotion at this date.
+                </Typography>
               )}
-
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
-                {settingUpSalary && !activeSalary && (
-                  <Button color="inherit" onClick={() => { setSettingUpSalary(false); setSalaryForm(emptySalaryForm); }}>Cancel</Button>
-                )}
-                <Button
-                  variant="contained"
-                  disabled={!salaryForm.base_salary || createSalaryMutation.isPending || updateSalaryMutation.isPending}
-                  onClick={() => {
-                    const payload = {
-                      base_salary: Number(salaryForm.base_salary),
-                      bonus: Number(salaryForm.bonus) || 0,
-                      ssf_percent: Number(salaryForm.ssf_percent) || 0,
-                      other_deductions: Number(salaryForm.other_deductions) || 0,
-                      effective_date: salaryForm.effective_date,
-                    };
-                    if (activeSalary) {
-                      updateSalaryMutation.mutate(payload);
-                    } else {
-                      createSalaryMutation.mutate({ ...payload, employee_id: employeeId });
-                    }
-                  }}
-                >
-                  {createSalaryMutation.isPending || updateSalaryMutation.isPending
-                    ? 'Saving…'
-                    : activeSalary ? 'Update Salary' : 'Create Salary'}
-                </Button>
-              </Box>
-            </>
+              <Tooltip title={employmentUnchanged ? 'Nothing to record - Seniority Level and Employment Status are unchanged' : ''}>
+                <span>
+                  <Button
+                    variant="contained"
+                    disabled={updateEmploymentMutation.isPending || employmentUnchanged}
+                    onClick={() => updateEmploymentMutation.mutate({
+                      seniority_level_id: employmentForm.seniority_level_id === '' ? null : Number(employmentForm.seniority_level_id),
+                      employment_type: employmentForm.employment_type,
+                      effective_date: employmentForm.effective_date,
+                    })}
+                  >
+                    {updateEmploymentMutation.isPending ? 'Saving…' : 'Save / Promote'}
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
           )}
         </SectionPaper>
+
+        {/* Compensation - hidden for non-admins viewing someone else's profile,
+            since the backend only ever returns the viewer's own salary data
+            regardless of whose page they're on (see payroll.py::get_salary_structures),
+            so showing it here for a colleague would just be their own numbers
+            mislabeled as the colleague's. */}
+        {(isAdmin || isOwnProfile) && (
+          <SectionPaper title="Compensation" subtitle={!isAdmin ? 'View only.' : undefined}>
+            {salaryLoading ? (
+              <Skeleton variant="rectangular" height={80} />
+            ) : !activeSalary && !settingUpSalary ? (
+              <Box sx={{ textAlign: 'center', py: 3 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: isAdmin ? 2 : 0 }}>No salary set</Typography>
+                {isAdmin && (
+                  <Button variant="contained" size="small" onClick={() => setSettingUpSalary(true)}>Set Salary</Button>
+                )}
+              </Box>
+            ) : (
+              <>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+                  <TextField
+                    fullWidth size="small" label="Base Monthly Salary" type="number" disabled={!isAdmin}
+                    value={salaryForm.base_salary}
+                    onChange={(e) => setSalaryForm({ ...salaryForm, base_salary: e.target.value })}
+                    slotProps={{ htmlInput: { min: 0, step: 100 } }}
+                  />
+                  <TextField
+                    fullWidth size="small" label="Bonus" type="number" disabled={!isAdmin}
+                    value={salaryForm.bonus}
+                    onChange={(e) => setSalaryForm({ ...salaryForm, bonus: e.target.value })}
+                    helperText={isAdmin ? 'One-off or recurring bonus, added on top of base salary' : undefined}
+                    slotProps={{ htmlInput: { min: 0, step: 100 } }}
+                  />
+                  <TextField
+                    fullWidth size="small" label="SSF Deduction %" type="number" disabled={!isAdmin}
+                    value={salaryForm.ssf_percent}
+                    onChange={(e) => setSalaryForm({ ...salaryForm, ssf_percent: e.target.value })}
+                    helperText={isAdmin ? `Placeholder default (${DEFAULT_SSF_PERCENT}%) - verify/adjust against current SSF rules.` : undefined}
+                    slotProps={{ htmlInput: { min: 0, max: 100, step: 0.5 } }}
+                  />
+                  <TextField
+                    fullWidth size="small" label="Other Deductions" type="number" disabled={!isAdmin}
+                    value={salaryForm.other_deductions}
+                    onChange={(e) => setSalaryForm({ ...salaryForm, other_deductions: e.target.value })}
+                    helperText={isAdmin ? 'Any other flat deduction - loan repayment, advance, etc.' : undefined}
+                    slotProps={{ htmlInput: { min: 0, step: 100 } }}
+                  />
+                  {isAdmin && (
+                    <TextField
+                      fullWidth size="small" label="Effective Date" type="date" sx={{ gridColumn: '1 / -1' }}
+                      value={salaryForm.effective_date}
+                      onChange={(e) => setSalaryForm({ ...salaryForm, effective_date: e.target.value })}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                    />
+                  )}
+                </Box>
+
+                {salaryForm.base_salary && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">SSF Deduction: {fmt(salaryPreview.ssfAmount)}</Typography>
+                    <Typography variant="body2">Total Deductions: {fmt(salaryPreview.totalDeductions)}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>Net Pay (Total in Hand): {fmt(salaryPreview.netPay)}</Typography>
+                  </Alert>
+                )}
+
+                {isAdmin && (
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
+                    {settingUpSalary && !activeSalary && (
+                      <Button color="inherit" onClick={() => { setSettingUpSalary(false); setSalaryForm(emptySalaryForm); }}>Cancel</Button>
+                    )}
+                    <Button
+                      variant="contained"
+                      disabled={!salaryForm.base_salary || createSalaryMutation.isPending || updateSalaryMutation.isPending}
+                      onClick={() => {
+                        const payload = {
+                          base_salary: Number(salaryForm.base_salary),
+                          bonus: Number(salaryForm.bonus) || 0,
+                          ssf_percent: Number(salaryForm.ssf_percent) || 0,
+                          other_deductions: Number(salaryForm.other_deductions) || 0,
+                          effective_date: salaryForm.effective_date,
+                        };
+                        if (activeSalary) {
+                          updateSalaryMutation.mutate(payload);
+                        } else {
+                          createSalaryMutation.mutate({ ...payload, employee_id: employeeId });
+                        }
+                      }}
+                    >
+                      {createSalaryMutation.isPending || updateSalaryMutation.isPending
+                        ? 'Saving…'
+                        : activeSalary ? 'Update Salary' : 'Create Salary'}
+                    </Button>
+                  </Box>
+                )}
+              </>
+            )}
+          </SectionPaper>
+        )}
 
         {/* Career history */}
         <SectionPaper title="Career History">
@@ -549,6 +639,16 @@ const EmployeeDetail: React.FC = () => {
             <Skeleton variant="rectangular" height={120} />
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {isAdmin && history.some((e) => e.id != null) && (
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+                  <Button
+                    size="small" color="error" startIcon={<ClearHistoryIcon />}
+                    onClick={() => setClearHistoryConfirmOpen(true)}
+                  >
+                    Clear All History
+                  </Button>
+                </Box>
+              )}
               {[...history].reverse().map((entry, i) => (
                 <Box key={i} sx={{ display: 'flex', gap: 1.5, position: 'relative', pb: i === history.length - 1 ? 0 : 3 }}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -562,11 +662,20 @@ const EmployeeDetail: React.FC = () => {
                     </Box>
                     {i !== history.length - 1 && <Box sx={{ width: '2px', flex: 1, bgcolor: 'divider', my: 0.5 }} />}
                   </Box>
-                  <Box sx={{ pb: 1 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{entry.details}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(entry.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
-                    </Typography>
+                  <Box sx={{ pb: 1, flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{entry.details}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(entry.date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                      </Typography>
+                    </Box>
+                    {isAdmin && entry.id != null && (
+                      <Tooltip title="Delete this entry">
+                        <IconButton size="small" onClick={() => setDeleteHistoryTarget(entry.id!)}>
+                          <DeleteEntryIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </Box>
                 </Box>
               ))}
@@ -578,45 +687,47 @@ const EmployeeDetail: React.FC = () => {
         </SectionPaper>
 
         {/* Danger zone / admin actions */}
-        <SectionPaper title="Danger Zone">
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {(employee.invite_status === 'invited' || employee.invite_status === 'expired') && (
-              <Tooltip title="Copy a fresh invite link">
+        {isAdmin && (
+          <SectionPaper title="Danger Zone">
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {(employee.invite_status === 'invited' || employee.invite_status === 'expired') && (
+                <Tooltip title="Copy a fresh invite link">
+                  <Button
+                    variant="outlined" color="info" size="small" startIcon={<InviteIcon />}
+                    disabled={resendInviteMutation.isPending}
+                    onClick={() => resendInviteMutation.mutate()}
+                  >
+                    Resend Invite
+                  </Button>
+                </Tooltip>
+              )}
+              {employee.is_active ? (
                 <Button
-                  variant="outlined" color="info" size="small" startIcon={<InviteIcon />}
-                  disabled={resendInviteMutation.isPending}
-                  onClick={() => resendInviteMutation.mutate()}
+                  variant="outlined" color="error" size="small" startIcon={<PersonOffIcon />}
+                  onClick={() => setDeactivateConfirmOpen(true)}
                 >
-                  Resend Invite
+                  Deactivate
                 </Button>
-              </Tooltip>
-            )}
-            {employee.is_active ? (
-              <Button
-                variant="outlined" color="error" size="small" startIcon={<PersonOffIcon />}
-                onClick={() => setDeactivateConfirmOpen(true)}
-              >
-                Deactivate
-              </Button>
-            ) : (
-              <>
-                <Button
-                  variant="outlined" color="success" size="small" startIcon={<ActivateIcon />}
-                  disabled={activateMutation.isPending}
-                  onClick={() => activateMutation.mutate()}
-                >
-                  Reactivate
-                </Button>
-                <Button
-                  variant="outlined" color="error" size="small" startIcon={<DeleteForeverIcon />}
-                  onClick={() => setPermanentDeleteConfirmOpen(true)}
-                >
-                  Delete Permanently
-                </Button>
-              </>
-            )}
-          </Box>
-        </SectionPaper>
+              ) : (
+                <>
+                  <Button
+                    variant="outlined" color="success" size="small" startIcon={<ActivateIcon />}
+                    disabled={activateMutation.isPending}
+                    onClick={() => activateMutation.mutate()}
+                  >
+                    Reactivate
+                  </Button>
+                  <Button
+                    variant="outlined" color="error" size="small" startIcon={<DeleteForeverIcon />}
+                    onClick={() => setPermanentDeleteConfirmOpen(true)}
+                  >
+                    Delete Permanently
+                  </Button>
+                </>
+              )}
+            </Box>
+          </SectionPaper>
+        )}
 
         {/* Deactivate confirmation */}
         <Dialog open={deactivateConfirmOpen} onClose={() => setDeactivateConfirmOpen(false)} maxWidth="xs" fullWidth>
@@ -692,6 +803,48 @@ const EmployeeDetail: React.FC = () => {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setInviteLink(null)} variant="contained">Done</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete single history entry confirmation */}
+        <Dialog open={deleteHistoryTarget !== null} onClose={() => setDeleteHistoryTarget(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ pb: 1 }}>Delete History Entry</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">
+              Delete this career history entry? This cannot be undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setDeleteHistoryTarget(null)} color="inherit">Cancel</Button>
+            <Button
+              variant="contained" color="error"
+              disabled={deleteHistoryMutation.isPending}
+              onClick={() => deleteHistoryTarget !== null && deleteHistoryMutation.mutate(deleteHistoryTarget)}
+            >
+              {deleteHistoryMutation.isPending ? 'Deleting…' : 'Delete'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Clear entire history confirmation */}
+        <Dialog open={clearHistoryConfirmOpen} onClose={() => setClearHistoryConfirmOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ pb: 1 }}>Clear All Career History</DialogTitle>
+          <DialogContent>
+            <Alert severity="error" sx={{ mb: 2 }}>This cannot be undone.</Alert>
+            <Typography variant="body2" color="text.secondary">
+              Delete every recorded career history entry for <strong>{employee.first_name} {employee.last_name}</strong>?
+              Their "Joined" entry stays, since it isn't part of this history log.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setClearHistoryConfirmOpen(false)} color="inherit">Cancel</Button>
+            <Button
+              variant="contained" color="error"
+              disabled={clearHistoryMutation.isPending}
+              onClick={() => clearHistoryMutation.mutate()}
+            >
+              {clearHistoryMutation.isPending ? 'Clearing…' : 'Clear All'}
+            </Button>
           </DialogActions>
         </Dialog>
 
