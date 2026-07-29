@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_manager_user, get_current_tenant
+from ...core.permissions import require_permission, require_permission_with_limit, PermissionContext
 from ...core.audit import record_audit_log
 from ...core.voucher_service import create_manual_voucher
 from ...models.user import User
@@ -19,6 +20,9 @@ from ...schemas.voucher import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vouchers", tags=["vouchers"])
+
+CREATE = require_permission("voucher.create")
+POST = require_permission("voucher.post")
 
 
 def _hydrate(voucher: Voucher) -> Voucher:
@@ -42,7 +46,7 @@ def _load(db: Session, voucher_id: int, tenant_id: int) -> Optional[Voucher]:
     ).filter(Voucher.id == voucher_id, Voucher.tenant_id == tenant_id).first()
 
 
-@router.get("/", response_model=List[VoucherResponse])
+@router.get("", response_model=List[VoucherResponse])
 def get_vouchers(
     voucher_type: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -67,10 +71,10 @@ def get_vouchers(
     return [_hydrate(v) for v in vouchers]
 
 
-@router.post("/", response_model=VoucherResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=VoucherResponse, status_code=status.HTTP_201_CREATED)
 def create_voucher(
     data: VoucherCreate,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(CREATE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -118,7 +122,7 @@ def get_voucher(
 @router.put("/{voucher_id}/submit", response_model=VoucherResponse)
 def submit_voucher(
     voucher_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(CREATE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -140,15 +144,28 @@ def submit_voucher(
 @router.put("/{voucher_id}/approve", response_model=VoucherResponse)
 def approve_voucher(
     voucher_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    ctx: PermissionContext = Depends(require_permission_with_limit("voucher.approve")),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
+    current_user = ctx.user
     voucher = _load(db, voucher_id, tenant.id)
     if not voucher:
         raise HTTPException(status_code=404, detail="Voucher not found")
     if voucher.status != "submitted":
         raise HTTPException(status_code=400, detail=f"Cannot approve a voucher in '{voucher.status}' status")
+    if voucher.prepared_by == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You prepared this voucher and cannot also approve it - ask another admin to review it"
+        )
+
+    amount = round(sum(l.debit for l in voucher.journal_entry.lines), 2) if voucher.journal_entry else 0.0
+    if ctx.limit is not None and amount > ctx.limit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"This voucher ({amount:.2f}) exceeds your approval limit ({ctx.limit:.2f}) - ask someone more senior to approve it"
+        )
 
     voucher.status = "approved"
     voucher.approved_by = current_user.id
@@ -207,7 +224,7 @@ def cancel_voucher(
 @router.put("/{voucher_id}/post", response_model=VoucherResponse)
 def post_voucher(
     voucher_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(POST),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):

@@ -15,12 +15,25 @@ from ..models.tenant import Tenant
 from .voucher_service import create_manual_voucher
 
 
-def _last_movement(db: Session, tenant_id: int, item_id: int, warehouse_id: int) -> Optional[StockMovement]:
-    return db.query(StockMovement).filter(
+def _last_movement(
+    db: Session, tenant_id: int, item_id: int, warehouse_id: int, for_update: bool = False
+) -> Optional[StockMovement]:
+    """The current tail of the ledger for one item/warehouse.
+
+    With for_update=True this takes a row lock on that tail row, so a second
+    concurrent caller for the same item+warehouse blocks until the first
+    transaction commits or rolls back, instead of both reading the same
+    stale running_quantity and both committing a movement against it (which
+    is how stock gets oversold under concurrent stock-out requests).
+    """
+    query = db.query(StockMovement).filter(
         StockMovement.tenant_id == tenant_id,
         StockMovement.item_id == item_id,
         StockMovement.warehouse_id == warehouse_id,
-    ).order_by(StockMovement.id.desc()).first()
+    ).order_by(StockMovement.id.desc())
+    if for_update:
+        query = query.with_for_update()
+    return query.first()
 
 
 def get_stock_position(db: Session, tenant_id: int, item_id: int, warehouse_id: Optional[int] = None):
@@ -53,7 +66,7 @@ def record_stock_in(
     post_voucher: bool = False, contra_account_id: Optional[int] = None,
     movement_date: Optional[date] = None,
 ) -> StockMovement:
-    last = _last_movement(db, tenant.id, item.id, warehouse_id)
+    last = _last_movement(db, tenant.id, item.id, warehouse_id, for_update=True)
     old_qty = last.running_quantity if last else 0.0
     old_avg = last.running_average_cost if last else 0.0
 
@@ -95,7 +108,7 @@ def record_stock_out(
     post_voucher: bool = False, contra_account_id: Optional[int] = None,
     movement_date: Optional[date] = None,
 ) -> StockMovement:
-    last = _last_movement(db, tenant.id, item.id, warehouse_id)
+    last = _last_movement(db, tenant.id, item.id, warehouse_id, for_update=True)
     old_qty = last.running_quantity if last else 0.0
     old_avg = last.running_average_cost if last else 0.0
 
@@ -152,7 +165,7 @@ def record_transfer(
     if from_warehouse_id == to_warehouse_id:
         raise ValueError("Source and destination warehouse must be different")
 
-    last_from = _last_movement(db, tenant.id, item.id, from_warehouse_id)
+    last_from = _last_movement(db, tenant.id, item.id, from_warehouse_id, for_update=True)
     from_qty = last_from.running_quantity if last_from else 0.0
     from_avg = last_from.running_average_cost if last_from else 0.0
 
@@ -169,7 +182,7 @@ def record_transfer(
     db.add(out_movement)
     db.flush()
 
-    last_to = _last_movement(db, tenant.id, item.id, to_warehouse_id)
+    last_to = _last_movement(db, tenant.id, item.id, to_warehouse_id, for_update=True)
     to_qty = last_to.running_quantity if last_to else 0.0
     to_avg = last_to.running_average_cost if last_to else 0.0
     new_to_qty = to_qty + quantity

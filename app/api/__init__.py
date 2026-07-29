@@ -21,6 +21,7 @@ from .v1 import (
     voucher_router,
     inventory_router,
     budget_router,
+    rbac_router,
 )
 
 __all__ = [
@@ -46,4 +47,5 @@ __all__ = [
     "voucher_router",
     "inventory_router",
     "budget_router",
+    "rbac_router",
 ]

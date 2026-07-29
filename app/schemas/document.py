@@ -29,6 +29,10 @@ class DocumentResponse(DocumentBase):
     verified_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+    # Only populated on the admin/documents.verify "all documents" listing -
+    # GET /documents/my (self-scoped) leaves this unset since it's always the
+    # viewer's own name.
+    employee_name: Optional[str] = None
+
     class Config:
         from_attributes = True

@@ -45,6 +45,9 @@ class UserUpdate(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=50)
     last_name: Optional[str] = Field(None, min_length=1, max_length=50)
     role: Optional[str] = Field(None, pattern="^(admin|manager|user)$")
+    # New RBAC role/designation (see app/models/rbac.py) - separate from the
+    # legacy `role` string above, which stays in place during the rollout.
+    role_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -55,11 +58,12 @@ class UserResponse(BaseModel):
     first_name: str
     last_name: str
     role: str
+    role_id: Optional[int] = None
     is_active: bool
     tenant_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -119,6 +123,35 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class InvitationDetails(BaseModel):
+    """Read-only profile info shown on the accept-invitation page - the new
+    hire can only choose a username and password, everything else here was
+    set by whoever added them as an employee."""
+    first_name: str
+    last_name: str
+    email: str
+    employee_id: str
+    department: str
+    position: str
+    designation: Optional[str] = None
+    seniority_level: Optional[str] = None
+    joining_date: Optional[date] = None
+    tenant_name: str
+    username_suggestion: str
+
+
+class AcceptInvitationRequest(BaseModel):
+    token: str
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=8, max_length=100)
+
+    @validator('username')
+    def username_alphanumeric(cls, v):
+        if not v.isalnum():
+            raise ValueError('Username must be alphanumeric')
+        return v
 
 
 class TokenData(BaseModel):

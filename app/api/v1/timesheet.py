@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_admin_user, get_current_tenant, get_current_employee
+from ...core.permissions import user_has_permission
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
@@ -34,7 +35,7 @@ def get_my_timesheets(
         logger.error(f"Error in get_my_timesheets: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/", response_model=TimesheetResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TimesheetResponse, status_code=status.HTTP_201_CREATED)
 def create_timesheet(
     timesheet_data: TimesheetCreate,
     current_employee: Employee = Depends(get_current_employee),
@@ -306,9 +307,9 @@ def approve_timesheet(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Approve a timesheet (manager/admin only)."""
+    """Approve a timesheet (manager/admin/timesheet.approve only)."""
     try:
-        if current_user.role not in ["admin", "manager"]:
+        if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "timesheet.approve"):
             raise HTTPException(status_code=403, detail="Not authorized")
         
         timesheet = db.query(Timesheet).filter(

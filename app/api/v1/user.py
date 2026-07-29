@@ -3,35 +3,40 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from ...core.database import get_db
-from ...core.dependencies import get_current_admin_user, get_current_active_user
+from ...core.dependencies import get_current_active_user
+from ...core.permissions import require_permission, user_has_permission
 from ...core.audit import record_audit_log
 from ...models.user import User
+from ...models.rbac import Role
 from ...schemas.user import UserResponse, UserUpdate, ChangePasswordRequest, AdminResetPasswordRequest
 from ...core.security import get_password_hash
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-@router.get("/", response_model=List[UserResponse])
+MANAGE = require_permission("users.manage")
+
+
+@router.get("", response_model=List[UserResponse])
 def get_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     search: Optional[str] = None,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """
-    Get all users (admin only).
+    Get all users in the caller's own tenant (admin/users.manage only).
     """
-    query = db.query(User)
-    
+    query = db.query(User).filter(User.tenant_id == current_user.tenant_id)
+
     if search:
         query = query.filter(
-            (User.username.contains(search)) | 
+            (User.username.contains(search)) |
             (User.email.contains(search)) |
             (User.first_name.contains(search)) |
             (User.last_name.contains(search))
         )
-    
+
     users = query.offset(skip).limit(limit).all()
     return users
 
@@ -53,21 +58,21 @@ def get_user(
     db: Session = Depends(get_db)
 ):
     """
-    Get user by ID (admin or self).
+    Get user by ID (admin/users.manage or self, same tenant only).
     """
-    if current_user.id != user_id and current_user.role != "admin":
+    if current_user.id != user_id and not user_has_permission(db, current_user, "users.manage"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view this user"
         )
-    
-    user = db.query(User).filter(User.id == user_id).first()
+
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     return user
 
 
@@ -80,41 +85,72 @@ def update_user(
     db: Session = Depends(get_db)
 ):
     """
-    Update user (admin or self).
+    Update user (admin/users.manage or self, same tenant only).
     """
-    if current_user.id != user_id and current_user.role != "admin":
+    can_manage = user_has_permission(db, current_user, "users.manage")
+    if current_user.id != user_id and not can_manage:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this user"
         )
-    
-    user = db.query(User).filter(User.id == user_id).first()
+
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     # Update fields
     update_data = user_data.model_dump(exclude_unset=True)
 
-    # If role is being updated, only admin can do it
-    if 'role' in update_data and current_user.role != "admin":
+    # If role or role_id is being changed, the caller needs users.manage.
+    if ('role' in update_data or 'role_id' in update_data) and not can_manage:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin can update role"
+            detail="Only someone with users.manage can update role"
         )
 
-    # An admin must never be able to change their own role, even by mistake -
-    # this would either lock them out of admin-only endpoints or (if they're
-    # the only admin in the tenant) leave nobody able to promote anyone back.
-    if 'role' in update_data and current_user.id == user_id and update_data['role'] != current_user.role:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot change your own role. Ask another admin to do it."
-        )
+    if 'role_id' in update_data and update_data['role_id'] is not None:
+        new_role = db.query(Role).filter(
+            Role.id == update_data['role_id'], Role.tenant_id == current_user.tenant_id
+        ).first()
+        if not new_role:
+            raise HTTPException(status_code=404, detail="Role not found")
+
+    # Setting the legacy `role` string without also specifying role_id would
+    # otherwise leave role_id stale - e.g. promoting someone to role="manager"
+    # this way wouldn't grant the Manager system role's permissions on any
+    # endpoint that's been migrated to the new system, silently reducing
+    # their access. Keep them in sync unless the caller explicitly set
+    # role_id itself (which takes precedence).
+    if 'role' in update_data and 'role_id' not in update_data:
+        system_role = db.query(Role).filter(
+            Role.tenant_id == current_user.tenant_id,
+            Role.is_system.is_(True),
+            Role.name == {"admin": "Admin", "manager": "Manager", "user": "Employee"}.get(update_data['role']),
+        ).first()
+        if system_role:
+            update_data['role_id'] = system_role.id
+
+    # A manager must never be able to change their own role/role_id, even by
+    # mistake - this would either lock them out of manage-gated endpoints or
+    # (if they're the only one who can grant users.manage) leave nobody able
+    # to promote anyone back.
+    if current_user.id == user_id:
+        if 'role' in update_data and update_data['role'] != current_user.role:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot change your own role. Ask another admin to do it."
+            )
+        if 'role_id' in update_data and update_data['role_id'] != current_user.role_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot change your own role. Ask another admin to do it."
+            )
 
     role_changed = 'role' in update_data and update_data['role'] != user.role
+    role_id_changed = 'role_id' in update_data and update_data['role_id'] != user.role_id
     old_role = user.role
 
     for key, value in update_data.items():
@@ -123,6 +159,10 @@ def update_user(
     if role_changed:
         record_audit_log(db, user.tenant_id, current_user.id, "role_change", "user", user.id,
                           f"Role changed for {user.username}: {old_role} -> {user.role}",
+                          request=request, severity="warning")
+    if role_id_changed:
+        record_audit_log(db, user.tenant_id, current_user.id, "role_change", "user", user.id,
+                          f"RBAC role changed for {user.username} (role_id -> {user.role_id})",
                           request=request, severity="warning")
 
     db.commit()
@@ -150,7 +190,7 @@ def change_password(
             detail="Not authorized to change this user's password"
         )
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -191,7 +231,7 @@ def admin_reset_password(
     user_id: int,
     data: AdminResetPasswordRequest,
     request: Request,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """
@@ -199,7 +239,7 @@ def admin_reset_password(
     For cases the self-service email flow can't cover - e.g. the user has
     lost access to their registered email entirely.
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -224,77 +264,77 @@ def admin_reset_password(
 @router.delete("/{user_id}")
 def delete_user(
     user_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """
-    Delete user (admin only).
+    Delete user (admin/users.manage only, same tenant).
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete yourself"
         )
-    
+
     # Deactivate instead of hard delete
     user.is_active = False
     db.commit()
-    
+
     return {"message": "User deactivated successfully"}
 
 
 @router.patch("/{user_id}/activate")
 def activate_user(
     user_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """
-    Activate a user (admin only).
+    Activate a user (admin/users.manage only, same tenant).
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     user.is_active = True
     db.commit()
-    
+
     return {"message": "User activated successfully"}
 
 
 @router.patch("/{user_id}/deactivate")
 def deactivate_user(
     user_id: int,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(MANAGE),
     db: Session = Depends(get_db)
 ):
     """
-    Deactivate a user (admin only).
+    Deactivate a user (admin/users.manage only, same tenant).
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == current_user.tenant_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot deactivate yourself"
         )
-    
+
     user.is_active = False
     db.commit()
-    
+
     return {"message": "User deactivated successfully"}

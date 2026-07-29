@@ -22,6 +22,8 @@ from .assignment_project import AssignmentProject
 from .voucher import Voucher
 from .inventory import Warehouse, ItemCategory, UnitOfMeasure, Supplier, Item, StockMovement
 from .budget import Budget, BudgetPeriod
+from .rbac import Permission, Role, RolePermission, SeniorityLevel, ApprovalLimit
+from .department import Department
 
 __all__ = [
     "User",
@@ -71,4 +73,10 @@ __all__ = [
     "StockMovement",
     "Budget",
     "BudgetPeriod",
+    "Permission",
+    "Role",
+    "RolePermission",
+    "SeniorityLevel",
+    "ApprovalLimit",
+    "Department",
 ]

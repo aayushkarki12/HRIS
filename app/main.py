@@ -2,10 +2,7 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 from .core.config import settings
-from .core.limiter import limiter
 from .core.logging_config import setup_logging
 
 setup_logging()
@@ -33,6 +30,7 @@ from .api import (
     voucher_router,
     inventory_router,
     budget_router,
+    rbac_router,
 )
 
 app = FastAPI(
@@ -43,9 +41,8 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Rate limiting - applied per-route via @limiter.limit() decorators (see auth.py)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Rate limiting is handled at the edge (nginx `limit_req`), not in the app -
+# see /etc/nginx/sites-available/hris-api.cantordust.org.conf.
 
 # Configure CORS - explicit origin allow-list only, no wildcard.
 # Set CORS_ORIGINS in .env to override (comma-separated) for staging/production.
@@ -82,11 +79,19 @@ app.include_router(resource_requests_router, prefix="/api/v1")
 app.include_router(voucher_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")
 app.include_router(budget_router, prefix="/api/v1")
+app.include_router(rbac_router, prefix="/api/v1")
 
-# Serve uploaded files (avatars, etc.)
-_uploads_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
-os.makedirs(_uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_uploads_dir), name="uploads")
+# Avatars are low-sensitivity and rendered via plain <img> tags all over the
+# UI, so they stay on a public static mount. Employee documents (resumes,
+# contracts, IDs) are NOT mounted here on purpose - unlike avatars they can
+# be genuinely sensitive, and serving them from a public, unauthenticated
+# path would bypass every tenant/ownership check the /documents API
+# enforces. Those are served through the authenticated
+# GET /api/v1/documents/{id}/download endpoint instead (see document.py).
+_uploads_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
+_avatars_dir = os.path.join(_uploads_dir, "avatars")
+os.makedirs(_avatars_dir, exist_ok=True)
+app.mount("/uploads/avatars", StaticFiles(directory=_avatars_dir), name="avatars")
 
 @app.get("/")
 def root():

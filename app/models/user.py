@@ -13,15 +13,23 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     first_name = Column(String(50), nullable=True, default='')
     last_name = Column(String(50), nullable=True, default='')
+    # Legacy coarse role - still the source of truth for existing
+    # get_current_admin_user/get_current_manager_user checks during the RBAC
+    # rollout. New code should prefer role_id -> Role -> RolePermission.
     role = Column(String(20), default="user", nullable=False)
+    # New RBAC: an admin-managed, named role/designation (CEO, Accountant, ...)
+    # carrying a permission set. Nullable during rollout - not every user has
+    # been assigned one yet; falls back to the legacy `role` string until set.
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     # Relationships - use string references
     tenant = relationship("Tenant", back_populates="users")
     employee = relationship("Employee", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    rbac_role = relationship("Role", foreign_keys=[role_id])
     
     @property
     def full_name(self):

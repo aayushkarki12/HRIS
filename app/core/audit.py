@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 from fastapi import Request
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ def record_audit_log(
     details: Optional[str] = None,
     request: Optional[Request] = None,
     severity: str = "info",
+    occurred_at: Optional[datetime] = None,
 ) -> None:
     """
     Append an audit log entry. Does not commit - call sites already have an
@@ -25,6 +27,15 @@ def record_audit_log(
     password-change endpoints) to capture the caller's IP and user agent.
     Existing call sites that don't pass it keep working exactly as before,
     just without those two fields populated.
+
+    `occurred_at` is optional and purely additive too: when omitted, `created_at`
+    falls back to `AuditLog.created_at`'s `server_default=func.now()` (i.e. "right
+    now"), exactly as before. Pass it to backdate/forward-date an entry - e.g.
+    employees.py::update_employee uses this to timestamp an effective-dated
+    promotion at the date the admin says it takes effect, rather than the moment
+    they clicked Save. An explicit constructor value here overrides the column's
+    server_default, since SQLAlchemy only falls back to the server default when
+    the attribute is left unset.
     """
     ip_address = None
     user_agent = None
@@ -34,7 +45,7 @@ def record_audit_log(
         if user_agent and len(user_agent) > 255:
             user_agent = user_agent[:255]
 
-    db.add(AuditLog(
+    kwargs = dict(
         tenant_id=tenant_id,
         user_id=user_id,
         action=action,
@@ -44,4 +55,8 @@ def record_audit_log(
         ip_address=ip_address,
         user_agent=user_agent,
         severity=severity,
-    ))
+    )
+    if occurred_at is not None:
+        kwargs["created_at"] = occurred_at
+
+    db.add(AuditLog(**kwargs))
