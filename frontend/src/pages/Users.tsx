@@ -31,7 +31,7 @@ import {
   LockReset as LockResetIcon,
   ContentCopy as CopyIcon,
 } from '@mui/icons-material';
-import { userService } from '../services/api';
+import { userService, rbacService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AccessDenied from '../components/common/AccessDenied';
 
@@ -54,6 +54,21 @@ const Users: React.FC = () => {
     queryKey: ['users', search],
     queryFn: () => userService.getAll(search || undefined),
     enabled: isAdmin,
+  });
+
+  const { data: roles } = useQuery({
+    queryKey: ['rbac-roles'],
+    queryFn: () => rbacService.getRoles(),
+    enabled: isAdmin,
+  });
+
+  const roleIdMutation = useMutation({
+    mutationFn: ({ id, role_id }: { id: number; role_id: number }) => userService.updateRoleId(id, role_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('Designation updated');
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to update designation'),
   });
 
   const roleMutation = useMutation({
@@ -162,13 +177,14 @@ const Users: React.FC = () => {
               <TableCell><strong>Name</strong></TableCell>
               <TableCell><strong>Email</strong></TableCell>
               <TableCell><strong>Role</strong></TableCell>
+              <TableCell><strong>Designation</strong></TableCell>
               <TableCell><strong>Status</strong></TableCell>
               <TableCell align="right"><strong>Actions</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {(!users || users.length === 0) ? (
-              <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Typography color="textSecondary">No users found</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="textSecondary">No users found</Typography></TableCell></TableRow>
             ) : users.map((u: any) => {
               const isSelf = u.id === currentUser?.id;
               return (
@@ -194,6 +210,21 @@ const Users: React.FC = () => {
                         Can't change your own role
                       </Typography>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      size="small"
+                      value={u.role_id ?? ''}
+                      displayEmpty
+                      onChange={(e) => roleIdMutation.mutate({ id: u.id, role_id: Number(e.target.value) })}
+                      disabled={roleIdMutation.isPending}
+                      sx={{ minWidth: 160 }}
+                    >
+                      <MenuItem value="" disabled>Unassigned</MenuItem>
+                      {(roles ?? []).map((r: any) => (
+                        <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
+                      ))}
+                    </Select>
                   </TableCell>
                   <TableCell>
                     <Chip label={u.is_active ? 'Active' : 'Inactive'} color={u.is_active ? 'success' : 'default'} size="small" />
@@ -251,13 +282,15 @@ const Users: React.FC = () => {
               <TextField
                 fullWidth
                 value={resultPassword}
-                InputProps={{
-                  readOnly: true,
-                  endAdornment: (
-                    <IconButton onClick={() => { navigator.clipboard.writeText(resultPassword); toast.success('Copied'); }} size="small">
-                      <CopyIcon fontSize="small" />
-                    </IconButton>
-                  ),
+                slotProps={{
+                  input: {
+                    readOnly: true,
+                    endAdornment: (
+                      <IconButton onClick={() => { navigator.clipboard.writeText(resultPassword); toast.success('Copied'); }} size="small">
+                        <CopyIcon fontSize="small" />
+                      </IconButton>
+                    ),
+                  },
                 }}
               />
             </Box>

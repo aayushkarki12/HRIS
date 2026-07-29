@@ -31,6 +31,7 @@ import {
   Schedule as TimesheetIcon,
   AccountBalance as AccountingIcon,
   ManageAccounts as UsersIcon,
+  AdminPanelSettings as RolesIcon,
   ExpandLess,
   ExpandMore,
   Assignment as AssignmentIcon,
@@ -141,7 +142,8 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
 
   const userInitials = `${user?.first_name?.[0] ?? ''}${user?.last_name?.[0] ?? ''}`.toUpperCase();
   const userName = `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim();
-  const avatarSrc = myProfile?.profile_picture ? `http://localhost:8010${myProfile.profile_picture}` : undefined;
+  const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8010/api/v1').replace(/\/api\/v1\/?$/, '');
+  const avatarSrc = myProfile?.profile_picture ? `${API_BASE}${myProfile.profile_picture}` : undefined;
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -542,6 +544,16 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
                 >
                   <ListItemIcon><UsersIcon sx={{ fontSize: 18 }} /></ListItemIcon>
                   <ListItemText primary="Users & Roles" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton
+                  onClick={() => handleNavigation('/roles-permissions')}
+                  selected={isSelected('/roles-permissions')}
+                  sx={topItemSx}
+                >
+                  <ListItemIcon><RolesIcon sx={{ fontSize: 18 }} /></ListItemIcon>
+                  <ListItemText primary="Roles & Permissions" />
                 </ListItemButton>
               </ListItem>
               <ListItem disablePadding>

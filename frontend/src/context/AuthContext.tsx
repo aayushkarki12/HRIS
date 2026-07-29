@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from '../types';
 import { authService } from '../services/api';
 import axios from 'axios';
@@ -46,6 +46,14 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isManager: boolean;
+  // New RBAC: the resolved set of permission keys the user's role grants
+  // (see app/core/permissions.py on the backend). Populated after login/on
+  // load; empty until then. hasPermission() is the one thing pages/routes
+  // should call - it's additive with isAdmin/isManager, not a replacement,
+  // since not every endpoint has been migrated to the new system yet.
+  permissions: string[];
+  hasPermission: (key: string) => boolean;
+  refreshPermissions: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,15 +62,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [permissions, setPermissions] = useState<string[]>([]);
+
+  const refreshPermissions = useCallback(async () => {
+    try {
+      const result = await authService.getMyPermissions();
+      setPermissions(result.permissions ?? []);
+    } catch (e) {
+      // Not fatal - pages relying on hasPermission() just see everything as
+      // false, same as if the user had no extra grants. isAdmin/isManager
+      // (derived from the legacy role string) still work independently.
+      console.error('Error fetching permissions:', e);
+    }
+  }, []);
 
   useEffect(() => {
     // Load user from localStorage
     const storedUser = localStorage.getItem('user');
     const storedTenant = localStorage.getItem('tenant');
-    
+
     console.log('AuthProvider - storedUser:', storedUser);
     console.log('AuthProvider - storedTenant:', storedTenant);
-    
+
     if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
@@ -72,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Error parsing user:', e);
       }
     }
-    
+
     if (storedTenant) {
       try {
         const parsedTenant = JSON.parse(storedTenant);
@@ -81,6 +102,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (e) {
         console.error('Error parsing tenant:', e);
       }
+    }
+
+    if (storedUser) {
+      refreshPermissions();
     }
     
     setLoading(false);
@@ -116,7 +141,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
-      
+
+      await refreshPermissions();
+
       return { success: true };
     } catch (error: any) {
       console.error('Login error:', error);
@@ -209,6 +236,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await authService.logout();
     setUser(null);
     setTenant(null);
+    setPermissions([]);
     localStorage.removeItem('user');
     localStorage.removeItem('tenant');
     localStorage.removeItem('access_token');
@@ -218,13 +246,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isAuthenticated: boolean = !!user;
   const isAdmin: boolean = user?.role === 'admin';
   const isManager: boolean = user?.role === 'manager' || user?.role === 'admin';
+  const hasPermission = (key: string): boolean => isAdmin || permissions.includes(key);
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      tenant, 
-      loading, 
-      login, 
+    <AuthContext.Provider value={{
+      user,
+      tenant,
+      loading,
+      permissions,
+      hasPermission,
+      refreshPermissions,
+      login,
       register, 
       logout,
       switchTenant,
