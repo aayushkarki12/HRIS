@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -58,6 +59,7 @@ const STATUS_META: Record<string, { color: any; icon: React.ReactNode; bg: strin
 
 const Projects: React.FC = () => {
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -232,7 +234,7 @@ const Projects: React.FC = () => {
                   transition: 'box-shadow 0.15s, transform 0.15s',
                   '&:hover': { boxShadow: 3, transform: 'translateY(-2px)' },
                 }}>
-                  <CardContent sx={{ flex: 1, p: 2.5 }}>
+                  <CardContent sx={{ flex: 1, p: 2.5, cursor: 'pointer' }} onClick={() => navigate(`/projects/${project.id}`)}>
                     {/* Status + name */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 600, mr: 1, lineHeight: 1.3 }}>

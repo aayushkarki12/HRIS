@@ -52,6 +52,10 @@ class ProjectMemberCreate(BaseModel):
     role: Optional[str] = Field(None, max_length=50)
 
 
+class ProjectMemberUpdate(BaseModel):
+    role: Optional[str] = Field(None, max_length=50)
+
+
 class ProjectMemberResponse(BaseModel):
     id: int
     project_id: int

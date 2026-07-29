@@ -106,6 +106,10 @@ class EmployeeResponse(EmployeeBase):
 
 
 class EmployeeHistoryEntry(BaseModel):
+    # None for the synthetic "joined" entry (derived from Employee.joining_date,
+    # not a stored row) - only career_change entries, backed by an AuditLog
+    # row, can be deleted individually.
+    id: Optional[int] = None
     date: datetime
     action: str  # "joined" | "career_change"
     details: str
