@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_tenant
-from ...core.permissions import require_permission
+from ...core.permissions import require_permission, user_has_permission
 from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.project import Project
@@ -16,12 +16,39 @@ from ...models.invoice import Invoice
 from ...models.timesheet import TimesheetEntry
 from ...schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
-    ProjectMemberCreate, ProjectMemberResponse,
+    ProjectMemberCreate, ProjectMemberUpdate, ProjectMemberResponse,
 )
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 MANAGE = require_permission("projects.manage")
+
+# The hierarchy graph on the project detail page needs exactly one "lead" to
+# put at the top - reusing the free-text `role` column (rather than adding a
+# dedicated is_lead flag) so existing role values like "QA"/"Developer" keep
+# working. This exact string is what the frontend's "Make Lead" action writes
+# and what it matches on to find the lead; anything else is just a member.
+LEAD_ROLE = "Lead"
+
+
+def _can_view_all_projects(db: Session, user: User) -> bool:
+    return user.role in ("admin", "manager") or user_has_permission(db, user, "projects.manage")
+
+
+def _member_employee(db: Session, tenant_id: int, user: User) -> Optional[Employee]:
+    return db.query(Employee).filter(Employee.user_id == user.id, Employee.tenant_id == tenant_id).first()
+
+
+def _is_project_member(db: Session, tenant_id: int, project_id: int, user: User) -> bool:
+    employee = _member_employee(db, tenant_id, user)
+    if not employee:
+        return False
+    return db.query(ProjectMember).filter(
+        ProjectMember.project_id == project_id,
+        ProjectMember.employee_id == employee.id,
+        ProjectMember.tenant_id == tenant_id,
+    ).first() is not None
+
 
 @router.get("", response_model=List[ProjectResponse])
 def get_projects(
@@ -34,10 +61,21 @@ def get_projects(
     db: Session = Depends(get_db)
 ):
     """
-    Get all projects for the current tenant.
+    Get projects for the current tenant. Admin/manager/projects.manage see
+    every project; everyone else only sees projects they're a member of
+    (ProjectMember), not the tenant's full project list.
     """
     query = db.query(Project).filter(Project.tenant_id == tenant.id)
-    
+
+    if not _can_view_all_projects(db, current_user):
+        employee = _member_employee(db, tenant.id, current_user)
+        if not employee:
+            return []
+        query = query.join(ProjectMember, ProjectMember.project_id == Project.id).filter(
+            ProjectMember.employee_id == employee.id,
+            ProjectMember.tenant_id == tenant.id,
+        )
+
     if status:
         query = query.filter(Project.status == status)
     if search:
@@ -45,7 +83,7 @@ def get_projects(
             (Project.name.contains(search)) |
             (Project.description.contains(search))
         )
-    
+
     projects = query.offset(skip).limit(limit).all()
     return projects
 
@@ -57,15 +95,21 @@ def get_project(
     db: Session = Depends(get_db)
 ):
     """
-    Get project by ID for the current tenant.
+    Get project by ID for the current tenant. Same visibility rule as the
+    list endpoint - a non-member without projects.manage/admin/manager can't
+    reach a project's details just by guessing its id.
     """
     project = db.query(Project).filter(
         Project.id == project_id,
         Project.tenant_id == tenant.id
     ).first()
-    
+
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    if not _can_view_all_projects(db, current_user) and not _is_project_member(db, tenant.id, project_id, current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project")
+
     return project
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -149,7 +193,7 @@ def get_project_members(
     db: Session = Depends(get_db)
 ):
     """
-    Get all team members for a project.
+    Get all team members for a project. Same visibility rule as GET /{project_id}.
     """
     project = db.query(Project).filter(
         Project.id == project_id,
@@ -157,6 +201,9 @@ def get_project_members(
     ).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    if not _can_view_all_projects(db, current_user) and not _is_project_member(db, tenant.id, project_id, current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project")
 
     return db.query(ProjectMember).options(
         joinedload(ProjectMember.employee)
@@ -210,6 +257,45 @@ def add_project_member(
     db.add(member)
     db.commit()
     db.refresh(member)
+
+    member = db.query(ProjectMember).options(
+        joinedload(ProjectMember.employee)
+    ).filter(ProjectMember.id == member.id).first()
+    return member
+
+
+@router.put("/{project_id}/members/{employee_id}", response_model=ProjectMemberResponse)
+def update_project_member(
+    project_id: int,
+    employee_id: int,
+    member_data: ProjectMemberUpdate,
+    current_user: User = Depends(MANAGE),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    Update a project member's role (admin only). Setting role to exactly
+    "Lead" demotes any other current lead on this project first, so there's
+    at most one - the frontend's hierarchy graph assumes a single lead node.
+    """
+    member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == project_id,
+        ProjectMember.employee_id == employee_id,
+        ProjectMember.tenant_id == tenant.id
+    ).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="This employee is not a member of the project")
+
+    if member_data.role == LEAD_ROLE:
+        db.query(ProjectMember).filter(
+            ProjectMember.project_id == project_id,
+            ProjectMember.tenant_id == tenant.id,
+            ProjectMember.role == LEAD_ROLE,
+            ProjectMember.id != member.id,
+        ).update({"role": None})
+
+    member.role = member_data.role
+    db.commit()
 
     member = db.query(ProjectMember).options(
         joinedload(ProjectMember.employee)
