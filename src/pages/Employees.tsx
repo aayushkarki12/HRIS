@@ -79,7 +79,7 @@ const SkeletonRows: React.FC<{ cols: number }> = ({ cols }) => (
 );
 
 const Employees: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isManager, user, hasPermission } = useAuth();
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState('');
@@ -332,12 +332,14 @@ const Employees: React.FC = () => {
                 {isLoading ? (
                   <SkeletonRows cols={colCount} />
                 ) : filtered.length > 0 ? (
-                  filtered.map((employee) => (
+                  filtered.map((employee) => {
+                    const canOpenDetail = isAdmin || isManager || hasPermission('employees.view_all') || employee.user_id === user?.id;
+                    return (
                     <TableRow
                       key={employee.id}
-                      hover
-                      onClick={() => navigate(`/employees/${employee.id}`)}
-                      sx={{ cursor: 'pointer' }}
+                      hover={canOpenDetail}
+                      onClick={canOpenDetail ? () => navigate(`/employees/${employee.id}`) : undefined}
+                      sx={{ cursor: canOpenDetail ? 'pointer' : 'default' }}
                     >
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -479,7 +481,8 @@ const Employees: React.FC = () => {
                         </TableCell>
                       )}
                     </TableRow>
-                  ))
+                    );
+                  })
                 ) : (
                   <TableRow>
                     <TableCell colSpan={colCount} sx={{ py: 6, textAlign: 'center' }}>
