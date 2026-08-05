@@ -169,21 +169,25 @@ def get_today_attendance_overview(
 ):
     """
     Tenant-wide snapshot of who's clocked in today (admin/manager only). Used
-    to power the "today's attendance" KPI on the admin dashboard.
+    to power the "today's attendance" KPI on the admin dashboard, including
+    the clickable "who's online" drill-down and the "has a shift but hasn't
+    clocked in" list.
     """
     if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "attendance.manage"):
         raise HTTPException(status_code=403, detail="Not authorized to view tenant-wide attendance")
 
     today = date.today()
-    total_active_employees = db.query(Employee).filter(
+    active_employees = db.query(Employee).filter(
         Employee.tenant_id == tenant.id,
         Employee.is_active == True
-    ).count()
+    ).all()
+    total_active_employees = len(active_employees)
 
     today_records = db.query(Attendance).filter(
         Attendance.tenant_id == tenant.id,
         Attendance.date == today
     ).all()
+    attendance_by_employee = {att.employee_id: att for att in today_records}
 
     status_counts = {"present": 0, "late": 0, "half-day": 0, "leave": 0, "holiday": 0}
     for att in today_records:
@@ -193,11 +197,43 @@ def get_today_attendance_overview(
     checked_in = sum(1 for att in today_records if att.clock_in)
     absent = max(total_active_employees - len(today_records), 0)
 
+    def _employee_summary(emp: Employee, att: Optional[Attendance] = None) -> dict:
+        return {
+            "id": emp.id,
+            "name": f"{emp.first_name} {emp.last_name}",
+            "department": emp.department,
+            "position": emp.position,
+            "attendance_type": emp.attendance_type,
+            "clock_in": att.clock_in.isoformat() if att and att.clock_in else None,
+            "location_status": att.location_status if att else None,
+            "fixed_clock_in_time": emp.fixed_clock_in_time,
+        }
+
+    # Who's currently clocked in - for the "online now" drill-down. Includes
+    # every attendance_type (fixed/individual/contractor).
+    checked_in_employees = [
+        _employee_summary(emp, attendance_by_employee.get(emp.id))
+        for emp in active_employees
+        if attendance_by_employee.get(emp.id) and attendance_by_employee[emp.id].clock_in and not attendance_by_employee[emp.id].clock_out
+    ]
+
+    # Employees with a fixed shift (fixed_clock_in_time configured) who
+    # haven't clocked in yet today - shift is optional, only "fixed"
+    # attendance_type employees who actually have one set are considered.
+    missed_shift_employees = [
+        _employee_summary(emp, attendance_by_employee.get(emp.id))
+        for emp in active_employees
+        if emp.attendance_type == "fixed" and emp.fixed_clock_in_time
+        and not (attendance_by_employee.get(emp.id) and attendance_by_employee[emp.id].clock_in)
+    ]
+
     return {
         "total_active_employees": total_active_employees,
         "checked_in": checked_in,
         "absent": absent,
         "status_counts": status_counts,
+        "checked_in_employees": checked_in_employees,
+        "missed_shift_employees": missed_shift_employees,
     }
 
 @router.post("/clock-in")
