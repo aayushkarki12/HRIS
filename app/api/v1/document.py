@@ -40,7 +40,7 @@ def _storage_key(file_url: str) -> str:
 
 from ...core.database import get_db
 from ...core.dependencies import get_current_active_user, get_current_tenant, get_current_employee
-from ...core.permissions import require_permission
+from ...core.permissions import require_permission, user_has_permission
 from ...core.storage import storage
 from ...models.user import User
 from ...models.tenant import Tenant
@@ -53,15 +53,19 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 @router.get("", response_model=List[DocumentResponse])
 def get_all_documents(
+    employee_id: Optional[int] = Query(None, description="Narrow to one employee's documents"),
     current_user: User = Depends(require_permission("documents.verify")),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
-    """Every document in the tenant, for review/verification - admin/
-    documents.verify only. Regular employees only ever see their own via
-    GET /documents/my; the frontend picks which one to call based on
-    hasPermission('documents.verify')."""
-    documents = db.query(Document).filter(Document.tenant_id == tenant.id).order_by(Document.created_at.desc()).all()
+    """Every document in the tenant (or, with employee_id, just one
+    employee's), for review/verification - admin/documents.verify only.
+    Regular employees only ever see their own via GET /documents/my; the
+    frontend picks which one to call based on hasPermission('documents.verify')."""
+    query = db.query(Document).filter(Document.tenant_id == tenant.id)
+    if employee_id is not None:
+        query = query.filter(Document.employee_id == employee_id)
+    documents = query.order_by(Document.created_at.desc()).all()
     responses = []
     for doc in documents:
         resp = DocumentResponse.model_validate(doc)
@@ -87,12 +91,29 @@ async def upload_document(
     document_type: str = Query(..., description="Document type (passport, id, resume, contract, etc.)"),
     document_name: Optional[str] = Query(None, description="Display name for the document"),
     description: Optional[str] = Query(None),
+    employee_id: Optional[int] = Query(None, description="Upload on behalf of this employee - admin/manager/documents.verify only. Omit to upload for yourself."),
     file: UploadFile = File(...),
-    current_employee: Employee = Depends(get_current_employee),
+    current_user: User = Depends(get_current_active_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Upload a document for current employee."""
+    """Upload a document for the current employee, or - if employee_id is
+    given and the caller is admin/manager/documents.verify - on behalf of
+    another employee (e.g. from that employee's detail page)."""
+    if employee_id is not None:
+        can_upload_for_others = current_user.role in ("admin", "manager") or user_has_permission(db, current_user, "documents.verify")
+        if not can_upload_for_others:
+            raise HTTPException(status_code=403, detail="Not authorized to upload documents for another employee")
+        current_employee = db.query(Employee).filter(
+            Employee.id == employee_id, Employee.tenant_id == tenant.id
+        ).first()
+        if not current_employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+    else:
+        current_employee = db.query(Employee).filter(Employee.user_id == current_user.id).first()
+        if not current_employee:
+            raise HTTPException(status_code=404, detail="Employee record not found")
+
     # Validate file type
     if file.content_type not in _CONTENT_TYPE_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"File type '{file.content_type}' is not allowed. Accepted: PDF, images, Word, Excel, plain text, ZIP.")

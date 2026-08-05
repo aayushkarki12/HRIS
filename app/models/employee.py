@@ -24,11 +24,24 @@ class Employee(Base):
     # permissions. Nullable - most employees won't have one until an admin
     # sets it.
     seniority_level_id = Column(Integer, ForeignKey("seniority_levels.id"), nullable=True)
-    # "full_time" | "probation" - a new hire typically starts on probation and
-    # is confirmed to full_time later via a normal PUT /employees/{id}. Drives
-    # a reduced leave allocation while on probation - see
-    # app/api/v1/leave.py::PROBATION_LEAVE_RATIO.
+    # "full_time" | "probation" | "contractor" - a new hire typically starts
+    # on probation and is confirmed to full_time later via a normal
+    # PUT /employees/{id}. Drives leave allocation - probation gets a
+    # reduced allocation, contractor gets none - see
+    # app/api/v1/leave.py::_allocated_days_for.
     employment_type = Column(String(20), nullable=False, default="full_time")
+
+    # Attendance rule type: "fixed" (assigned site + optional fixed clock
+    # time, soft-enforced), "individual" (flexible timing, freeform),
+    # "contractor" (fully freeform, clock in/out any time including across
+    # midnight). Deliberately a separate field from employment_type, which
+    # is already load-bearing for the probation leave-allocation ratio - see
+    # app/api/v1/attendance.py for how each type's clock-in/out is handled.
+    attendance_type = Column(String(20), nullable=False, default="individual")
+    assigned_work_location_id = Column(Integer, ForeignKey("work_locations.id"), nullable=True)
+    # "HH:MM" 24-hour strings, only meaningful when attendance_type == "fixed".
+    fixed_clock_in_time = Column(String(5), nullable=True)
+    fixed_clock_out_time = Column(String(5), nullable=True)
 
     # Self-service fields
     profile_picture = Column(String(255), nullable=True)
@@ -61,6 +74,7 @@ class Employee(Base):
     attendances = relationship("Attendance", back_populates="employee", cascade="all, delete-orphan")
     timesheets = relationship("Timesheet", back_populates="employee", cascade="all, delete-orphan")
     seniority_level = relationship("SeniorityLevel")
+    assigned_work_location = relationship("WorkLocation")
     
     @property
     def full_name(self):

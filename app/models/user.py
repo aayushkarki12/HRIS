@@ -21,6 +21,15 @@ class User(Base):
     # carrying a permission set. Nullable during rollout - not every user has
     # been assigned one yet; falls back to the legacy `role` string until set.
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
+    # E.164 format (e.g. "+15551234567"). Nullable so existing accounts
+    # aren't broken by this migration - only collected/verified going forward
+    # via the invite-acceptance flow (self-registration was removed). See
+    # phone_verified and app/core/firebase.py.
+    phone = Column(String(20), unique=True, nullable=True, index=True)
+    # True once the user has completed Firebase phone OTP verification once
+    # (not re-checked on every login - see POST /auth/verify-phone and
+    # POST /auth/login).
+    phone_verified = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

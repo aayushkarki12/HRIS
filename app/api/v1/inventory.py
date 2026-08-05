@@ -444,7 +444,6 @@ def get_movements(
 @router.post("/movements/stock-in", response_model=StockMovementResponse, status_code=status.HTTP_201_CREATED)
 def stock_in(
     data: StockInRequest,
-    contra_account_id: Optional[int] = None,
     current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
@@ -456,14 +455,11 @@ def stock_in(
     if not warehouse:
         raise HTTPException(status_code=404, detail="Warehouse not found")
 
-    if data.post_voucher and not contra_account_id:
-        raise HTTPException(status_code=400, detail="contra_account_id is required to post a voucher for stock in")
-
     try:
         movement = record_stock_in(
             db, tenant, current_user, item, data.warehouse_id, data.quantity, data.unit_cost,
             reference_type=data.reference_type, reference_number=data.reference_number,
-            notes=data.notes, post_voucher=data.post_voucher, contra_account_id=contra_account_id,
+            notes=data.notes,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -478,7 +474,6 @@ def stock_in(
 @router.post("/movements/stock-out", response_model=StockMovementResponse, status_code=status.HTTP_201_CREATED)
 def stock_out(
     data: StockOutRequest,
-    contra_account_id: Optional[int] = None,
     current_user: User = Depends(MANAGE),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
@@ -490,14 +485,11 @@ def stock_out(
     if not warehouse:
         raise HTTPException(status_code=404, detail="Warehouse not found")
 
-    if data.post_voucher and data.reference_type in ("adjustment", "damaged") and not contra_account_id:
-        raise HTTPException(status_code=400, detail="contra_account_id is required to post a voucher for this movement type")
-
     try:
         movement = record_stock_out(
             db, tenant, current_user, item, data.warehouse_id, data.quantity,
             reference_type=data.reference_type, reference_number=data.reference_number,
-            notes=data.notes, post_voucher=data.post_voucher, contra_account_id=contra_account_id,
+            notes=data.notes,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

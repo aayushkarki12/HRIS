@@ -22,11 +22,7 @@ router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
 # Maps the free-text entity_type taxonomy accumulated across the app to a small
 # set of user-facing modules for filtering. Anything not listed falls back to "Other".
 ENTITY_TYPE_TO_MODULE = {
-    "voucher": "Accounting", "journal_entry": "Accounting", "account": "Accounting",
-    "ledger_group": "Accounting", "invoice": "Accounting",
-    "expense_claim": "Expenses",
     "leave": "HR", "attendance": "HR", "employee": "HR",
-    "salary_structure": "Payroll", "payroll_run": "Payroll",
     "resource_request": "Resources",
     "auth": "Security", "user": "Security",
 }

@@ -102,11 +102,6 @@ class Item(Base):
     reorder_level = Column(Float, default=0)
     min_stock = Column(Float, default=0)
     max_stock = Column(Float, nullable=True)
-    # Optional links so stock movements can generate accounting vouchers - if either is
-    # unset, movements for this item simply skip voucher creation (inventory tracking
-    # still works without a chart-of-accounts setup for it).
-    inventory_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
-    cogs_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -115,8 +110,6 @@ class Item(Base):
     category = relationship("ItemCategory")
     unit = relationship("UnitOfMeasure")
     default_supplier = relationship("Supplier")
-    inventory_account = relationship("Account", foreign_keys=[inventory_account_id])
-    cogs_account = relationship("Account", foreign_keys=[cogs_account_id])
 
 
 class StockMovement(Base):
@@ -147,7 +140,6 @@ class StockMovement(Base):
     related_warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=True)  # the other leg of a transfer
     reference_type = Column(String(20), nullable=True)  # purchase | sale | manual | transfer | adjustment | damaged
     reference_id = Column(Integer, nullable=True)
-    voucher_id = Column(Integer, ForeignKey("vouchers.id"), nullable=True)
     notes = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -156,5 +148,4 @@ class StockMovement(Base):
     item = relationship("Item")
     warehouse = relationship("Warehouse", foreign_keys=[warehouse_id])
     related_warehouse = relationship("Warehouse", foreign_keys=[related_warehouse_id])
-    voucher = relationship("Voucher")
     creator = relationship("User")

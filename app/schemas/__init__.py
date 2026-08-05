@@ -1,9 +1,8 @@
-from .user import UserCreate, UserResponse, Token, UserUpdate
+from .user import UserResponse, Token, UserUpdate
 from .employee import EmployeeCreate, EmployeeResponse, EmployeeUpdate
 
 __all__ = [
-    "UserCreate",
-    "UserResponse", 
+    "UserResponse",
     "Token",
     "UserUpdate",
     "EmployeeCreate",
