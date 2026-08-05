@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Card, CardContent, Typography, Divider, Skeleton,
   Alert, LinearProgress, Chip, List, ListItem, ListItemText, ListItemIcon, Button,
+  Dialog, DialogTitle, DialogContent,
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -92,18 +93,19 @@ const ChartPanel: React.FC<{ title: string; subtitle?: string; children: React.R
     </motion.div>
   );
 
-const StatCard: React.FC<{ title: string; value: number | string; subtitle?: string; trend?: string; icon: any; color: string; bgColor: string; index: number; path?: string }> =
-  ({ title, value, subtitle, trend, icon: Icon, color, bgColor, index, path }) => {
+const StatCard: React.FC<{ title: string; value: number | string; subtitle?: string; trend?: string; icon: any; color: string; bgColor: string; index: number; path?: string; onClick?: () => void }> =
+  ({ title, value, subtitle, trend, icon: Icon, color, bgColor, index, path, onClick }) => {
     const navigate = useNavigate();
+    const handleClick = onClick ?? (path ? () => navigate(path) : undefined);
     return (
     <motion.div custom={index} variants={fadeUp} initial="hidden" animate="visible">
       <Card
-        onClick={path ? () => navigate(path) : undefined}
+        onClick={handleClick}
         sx={{
           borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none',
           transition: 'box-shadow 0.15s, transform 0.15s',
-          cursor: path ? 'pointer' : 'default',
-          '&:hover': path ? { boxShadow: 3, transform: 'translateY(-2px)', borderColor: 'primary.main' } : { boxShadow: 3, transform: 'translateY(-2px)' },
+          cursor: handleClick ? 'pointer' : 'default',
+          '&:hover': handleClick ? { boxShadow: 3, transform: 'translateY(-2px)', borderColor: 'primary.main' } : { boxShadow: 3, transform: 'translateY(-2px)' },
         }}
       >
         <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
@@ -288,6 +290,9 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
 
   const checkedIn = attendanceOverview?.checked_in ?? 0;
   const totalActive = attendanceOverview?.total_active_employees ?? 0;
+  const checkedInEmployees = attendanceOverview?.checked_in_employees ?? [];
+  const missedShiftEmployees = attendanceOverview?.missed_shift_employees ?? [];
+  const [onlineDialogOpen, setOnlineDialogOpen] = useState(false);
 
   const now = new Date();
   const newEmployeesThisMonth = (employees as any[]).filter((e: any) => {
@@ -303,7 +308,7 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
     { title: 'Total Employees', value: totalEmployees, icon: PeopleIcon, color: '#4F46E5', bgColor: '#EEF2FF', subtitle: `${activeEmployees} active`, trend: newEmployeesThisMonth > 0 ? `+${newEmployeesThisMonth} this month` : undefined, path: '/employees' },
     { title: 'Pending Leave Requests', value: pendingLeaves.length, icon: LeaveIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: 'Awaiting your decision', path: '/leaves' },
     { title: 'Pending Resource Requests', value: pendingResourceRequests.length, icon: ResourceRequestIcon, color: '#DC2626', bgColor: '#FEF2F2', subtitle: 'Awaiting your decision', path: '/resources' },
-    { title: "Today's Attendance", value: `${checkedIn}/${totalActive}`, icon: AttendanceIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: `${attendanceOverview?.absent ?? 0} not checked in`, path: '/attendance' },
+    { title: "Today's Attendance", value: `${checkedIn}/${totalActive}`, icon: AttendanceIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: `${attendanceOverview?.absent ?? 0} not checked in - click to see who's online`, onClick: () => setOnlineDialogOpen(true) },
     { title: 'Total Resources', value: totalResources, icon: ComputerIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: `${availableRes} available`, path: '/resources' },
     { title: 'Active Projects', value: activeProjects, icon: FolderIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: `${completedProjects} completed`, trend: newProjectsThisMonth > 0 ? `+${newProjectsThisMonth} this month` : undefined, path: '/projects' },
     { title: 'Active Assignments', value: activeAssignments, icon: AssignmentIcon, color: '#16A34A', bgColor: '#F0FDF4', subtitle: 'Currently allocated', path: '/assignments' },
@@ -335,6 +340,21 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
           ? Array.from({ length: 8 }).map((_, i) => <StatCardSkeleton key={i} />)
           : stats.map((stat, i) => <StatCard key={stat.title} index={i + 1} {...stat} />)}
       </Box>
+
+      {/* Employees with a fixed shift who haven't clocked in yet - shift is
+          optional per employee, only shown when there's actually someone to flag. */}
+      {!isLoading && missedShiftEmployees.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            {missedShiftEmployees.length} employee{missedShiftEmployees.length > 1 ? 's' : ''} with a shift haven't clocked in yet
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+            {missedShiftEmployees.map((e: any) => (
+              <Chip key={e.id} size="small" label={`${e.name} (due ${e.fixed_clock_in_time})`} />
+            ))}
+          </Box>
+        </Alert>
+      )}
 
       {/* Charts row 1 */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr' }, gap: 2, mb: 2 }}>
@@ -514,6 +534,30 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2, mt: 2 }}>
         <RecentActivity index={15} />
       </Box>
+
+      {/* Who's online (clocked in) right now */}
+      <Dialog open={onlineDialogOpen} onClose={() => setOnlineDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Online Now ({checkedInEmployees.length})</DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {checkedInEmployees.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>No one is clocked in right now.</Typography>
+          ) : (
+            <List dense disablePadding>
+              {checkedInEmployees.map((e: any) => (
+                <ListItem key={e.id} sx={{ py: 1 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}><CircleIcon sx={{ fontSize: 10, color: '#16A34A' }} /></ListItemIcon>
+                  <ListItemText
+                    primary={e.name}
+                    secondary={`${e.position || ''}${e.department ? ` · ${e.department}` : ''} · ${e.attendance_type}${e.clock_in ? ` · since ${new Date(e.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`}
+                    primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600 }}
+                    secondaryTypographyProps={{ fontSize: '0.75rem' }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
