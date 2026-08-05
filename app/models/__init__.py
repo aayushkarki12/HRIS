@@ -7,6 +7,7 @@ from .tenant import Tenant
 from .document import Document
 from .leave import LeaveType, Leave, LeaveBalance
 from .attendance import Attendance, Break, WorkLocation
+from .location_ping import LocationPing
 from .timesheet import Timesheet, TimesheetEntry
 from .refresh_token import RefreshToken
 from .audit_log import AuditLog
@@ -33,6 +34,7 @@ __all__ = [
     "Attendance",
     "Break",
     "WorkLocation",
+    "LocationPing",
     "Timesheet",
     "TimesheetEntry",
     "RefreshToken",
