@@ -11,8 +11,8 @@ interface RequireRoleProps {
 /**
  * Router-level role guard. PrivateRoute only checks "is logged in" and
  * renders a shared <Outlet/> for every page, so until now the router itself
- * had no opinion on who could reach /users, /vouchers, /payroll-adjacent
- * finance pages, etc. - each page was individually responsible for its own
+ * had no opinion on who could reach /users, /items, /stock-ledger, and other
+ * manager/admin-only pages - each page was individually responsible for its own
  * `if (!isAdmin) return <AccessDenied/>` check. That worked, but it made
  * protection opt-in per page: a new sensitive route that forgot to add its
  * own check would be silently reachable by any authenticated user.

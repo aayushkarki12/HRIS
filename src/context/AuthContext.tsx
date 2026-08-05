@@ -1,24 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User } from '../types';
 import { authService } from '../services/api';
-import axios from 'axios';
 
 interface LoginResult {
   success: boolean;
   error?: string;
-}
-
-interface RegisterData {
-  username: string;
-  email: string;
-  password: string;
-  first_name: string;
-  last_name: string;
-  phone?: string;
-  department?: string;
-  position?: string;
-  join_date?: string;
-  tenant_subdomain?: string;
 }
 
 interface Tenant {
@@ -40,7 +26,6 @@ interface AuthContextType {
   tenant: Tenant | null;
   loading: boolean;
   login: (username: string, password: string, tenantId?: number) => Promise<LoginResult>;
-  register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: number) => void;
   isAuthenticated: boolean;
@@ -165,7 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else if (status === 401) {
           errorMessage = 'Invalid credentials. Please check your username and password.';
         } else if (status === 404) {
-          errorMessage = 'User not found. Please register first.';
+          errorMessage = 'User not found. Contact an admin if you need an account.';
         } else if (status === 400) {
           errorMessage = data.detail || 'Bad request. Please check your input.';
         } else {
@@ -181,45 +166,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         success: false, 
         error: errorMessage 
       };
-    }
-  };
-
-  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8010/api/v1';
-      
-      const registrationData = {
-        username: data.username,
-        email: data.email,
-        password: data.password,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        phone: data.phone || '1234567890',
-        department: data.department || 'General',
-        position: data.position || 'Staff',
-        join_date: data.join_date || new Date().toISOString().split('T')[0],
-        tenant_subdomain: data.tenant_subdomain || 'default',
-      };
-
-      console.log('Registration data:', registrationData);
-      
-      const response = await axios.post(`${API_URL}/auth/register`, registrationData);
-      
-      if (response.status === 201 || response.status === 200) {
-        return { success: true };
-      }
-      return { success: false, error: 'Registration failed. Please try again.' };
-    } catch (error: any) {
-      console.error('Registration error:', error);
-      let errorMessage = 'Registration failed. Please try again.';
-      if (error.response?.data?.detail) {
-        if (typeof error.response.data.detail === 'string') {
-          errorMessage = error.response.data.detail;
-        } else if (Array.isArray(error.response.data.detail)) {
-          errorMessage = error.response.data.detail.map((d: any) => d.msg).join(', ');
-        }
-      }
-      return { success: false, error: errorMessage };
     }
   };
 
@@ -257,7 +203,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       hasPermission,
       refreshPermissions,
       login,
-      register, 
       logout,
       switchTenant,
       isAuthenticated, 

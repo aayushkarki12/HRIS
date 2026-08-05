@@ -6,7 +6,6 @@ import { ErrorBoundary } from './components';
 import { CommandPaletteProvider } from './components/common/CommandPalette';
 import { PrivateRoute, RequireRole } from './components';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import AcceptInvitation from './pages/AcceptInvitation';
@@ -17,33 +16,17 @@ import Resources from './pages/Resources';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import Assignments from './pages/Assignments';
-import Documents from './pages/Document';
 import Leaves from './pages/Leaves';
 import Attendance from './pages/Attendance';
 import Timesheets from './pages/Timesheets';
 import TenantSettings from './pages/TenantSettings';
 import Profile from './pages/profile';
-import ChartOfAccounts from './pages/ChartOfAccounts';
-import JournalEntries from './pages/JournalEntries';
-import GeneralLedger from './pages/GeneralLedger';
-import Payroll from './pages/Payroll';
-import AccountingDashboard from './pages/AccountingDashboard';
-import ExpenseClaims from './pages/ExpenseClaims';
-import Invoices from './pages/Invoices';
-import FinancialReports from './pages/FinancialReports';
 import Users from './pages/Users';
 import RolesPermissions from './pages/RolesPermissions';
-import Vouchers from './pages/Vouchers';
-import VoucherForm from './pages/VoucherForm';
-import VoucherDetail from './pages/VoucherDetail';
-import CostCentersTax from './pages/CostCentersTax';
-import LedgerGroups from './pages/LedgerGroups';
 import AuditTrail from './pages/AuditTrail';
 import InventorySetup from './pages/InventorySetup';
 import Items from './pages/Items';
 import StockLedger from './pages/StockLedger';
-import BankReconciliation from './pages/BankReconciliation';
-import Budgets from './pages/Budgets';
 
 function App() {
   return (
@@ -52,7 +35,6 @@ function App() {
         <CommandPaletteProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/invitation" element={<AcceptInvitation />} />
@@ -65,29 +47,13 @@ function App() {
             <Route path="projects" element={<Projects />} />
             <Route path="projects/:id" element={<ProjectDetail />} />
             <Route path="assignments" element={<Assignments />} />
-            <Route path="documents" element={<Documents />} />
             <Route path="leaves" element={<Leaves />} />
             <Route path="attendance" element={<Attendance />} />
             <Route path="timesheets" element={<Timesheets />} />
-            <Route path="accounting-dashboard" element={<RequireRole role="manager"><AccountingDashboard /></RequireRole>} />
-            <Route path="chart-of-accounts" element={<RequireRole role="manager"><ChartOfAccounts /></RequireRole>} />
-            <Route path="ledger-groups" element={<RequireRole role="manager"><LedgerGroups /></RequireRole>} />
             <Route path="audit-trail" element={<RequireRole role="manager"><AuditTrail /></RequireRole>} />
             <Route path="inventory-setup" element={<RequireRole role="manager"><InventorySetup /></RequireRole>} />
             <Route path="items" element={<RequireRole role="manager"><Items /></RequireRole>} />
             <Route path="stock-ledger" element={<RequireRole role="manager"><StockLedger /></RequireRole>} />
-            <Route path="budgets" element={<RequireRole role="manager"><Budgets /></RequireRole>} />
-            <Route path="vouchers" element={<RequireRole role="manager"><Vouchers /></RequireRole>} />
-            <Route path="vouchers/new" element={<RequireRole role="admin"><VoucherForm /></RequireRole>} />
-            <Route path="vouchers/:id" element={<RequireRole role="manager"><VoucherDetail /></RequireRole>} />
-            <Route path="journal-entries" element={<RequireRole role="manager"><JournalEntries /></RequireRole>} />
-            <Route path="general-ledger" element={<RequireRole role="manager"><GeneralLedger /></RequireRole>} />
-            <Route path="cost-centers" element={<RequireRole role="manager"><CostCentersTax /></RequireRole>} />
-            <Route path="bank-reconciliation" element={<RequireRole role="manager"><BankReconciliation /></RequireRole>} />
-            <Route path="payroll" element={<Payroll />} />
-            <Route path="expense-claims" element={<ExpenseClaims />} />
-            <Route path="invoices" element={<RequireRole role="manager"><Invoices /></RequireRole>} />
-            <Route path="financial-reports" element={<RequireRole role="manager"><FinancialReports /></RequireRole>} />
             <Route path="users" element={<RequireRole role="admin"><Users /></RequireRole>} />
             <Route path="roles-permissions" element={<RequireRole role="admin"><RolesPermissions /></RequireRole>} />
             <Route path="tenant-settings" element={<RequireRole role="admin"><TenantSettings /></RequireRole>} />

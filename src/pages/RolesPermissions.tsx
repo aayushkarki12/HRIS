@@ -4,23 +4,13 @@ import toast from 'react-hot-toast';
 import {
   Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, CircularProgress, Alert, MenuItem, IconButton, Tabs, Tab,
+  TextField, CircularProgress, Alert, IconButton, Tabs, Tab,
   Checkbox, FormControlLabel, FormGroup, Divider,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
 } from '@mui/icons-material';
 import { rbacService, getErrorMessage } from '../services/api';
-
-// Permissions whose enforcement point checks a dollar amount against the
-// resolved approval limit - see AMOUNT_LIMITED_PERMISSIONS in
-// app/core/permissions.py. Approval limits only make sense for these keys.
-const AMOUNT_LIMITED_PERMISSIONS = [
-  'voucher.approve',
-  'invoice.approve',
-  'expense.approve_accounting',
-  'budget.approve',
-];
 
 interface TabPanelProps {
   value: number;
@@ -47,10 +37,6 @@ const RolesPermissions: React.FC = () => {
   const { data: seniorityLevels, isLoading: seniorityLoading } = useQuery({
     queryKey: ['rbac-seniority-levels'],
     queryFn: () => rbacService.getSeniorityLevels(),
-  });
-  const { data: approvalLimits, isLoading: limitsLoading } = useQuery({
-    queryKey: ['rbac-approval-limits'],
-    queryFn: () => rbacService.getApprovalLimits(),
   });
   const { data: departments, isLoading: departmentsLoading } = useQuery({
     queryKey: ['rbac-departments'],
@@ -173,53 +159,6 @@ const RolesPermissions: React.FC = () => {
     levelMutation.mutate({ name: levelForm.name, rank: Number(levelForm.rank) });
   };
 
-  // ---------- Approval limit dialog ----------
-  const [limitModalOpen, setLimitModalOpen] = useState(false);
-  const [limitForm, setLimitForm] = useState<{ role_id: string; seniority_level_id: string; permission_key: string; max_amount: string }>({
-    role_id: '', seniority_level_id: '', permission_key: AMOUNT_LIMITED_PERMISSIONS[0], max_amount: '',
-  });
-  const [limitError, setLimitError] = useState('');
-
-  const openLimitModal = () => {
-    setLimitForm({ role_id: '', seniority_level_id: '', permission_key: AMOUNT_LIMITED_PERMISSIONS[0], max_amount: '' });
-    setLimitError('');
-    setLimitModalOpen(true);
-  };
-  const closeLimitModal = () => setLimitModalOpen(false);
-
-  const limitMutation = useMutation({
-    mutationFn: (data: any) => rbacService.createApprovalLimit(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['rbac-approval-limits'] });
-      toast.success('Approval limit created');
-      closeLimitModal();
-    },
-    onError: (e: any) => setLimitError(getErrorMessage(e, 'Failed to save approval limit')),
-  });
-
-  const limitDeleteMutation = useMutation({
-    mutationFn: (id: number) => rbacService.deleteApprovalLimit(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['rbac-approval-limits'] });
-      toast.success('Approval limit deleted - now unlimited for that combination');
-    },
-    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed to delete approval limit')),
-  });
-
-  const submitLimit = () => {
-    setLimitError('');
-    if (!limitForm.role_id && !limitForm.seniority_level_id) {
-      setLimitError('Pick a role, a seniority level, or both');
-      return;
-    }
-    limitMutation.mutate({
-      role_id: limitForm.role_id ? Number(limitForm.role_id) : null,
-      seniority_level_id: limitForm.seniority_level_id ? Number(limitForm.seniority_level_id) : null,
-      permission_key: limitForm.permission_key,
-      max_amount: Number(limitForm.max_amount),
-    });
-  };
-
   // ---------- Department dialog ----------
   const [deptModalOpen, setDeptModalOpen] = useState(false);
   const [deptEditing, setDeptEditing] = useState<any>(null);
@@ -260,7 +199,7 @@ const RolesPermissions: React.FC = () => {
     deptMutation.mutate({ name: deptForm.name });
   };
 
-  const loading = permsLoading || rolesLoading || seniorityLoading || limitsLoading || departmentsLoading;
+  const loading = permsLoading || rolesLoading || seniorityLoading || departmentsLoading;
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
@@ -274,14 +213,13 @@ const RolesPermissions: React.FC = () => {
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" sx={{ fontWeight: 700, color: '#2c3e50' }}>Roles & Permissions</Typography>
         <Typography variant="body2" color="textSecondary">
-          Manage designations, their permission matrix, seniority levels, and approval limits
+          Manage designations, their permission matrix, seniority levels, and departments
         </Typography>
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tab label="Roles & Permissions" />
         <Tab label="Seniority Levels" />
-        <Tab label="Approval Limits" />
         <Tab label="Departments" />
       </Tabs>
 
@@ -377,54 +315,8 @@ const RolesPermissions: React.FC = () => {
         </TableContainer>
       </TabPanel>
 
-      {/* ============ APPROVAL LIMITS TAB ============ */}
-      <TabPanel value={tab} index={2}>
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Sets a maximum amount for finance approvals (vouchers, invoices, expense claims, budgets). The most
-          specific match wins: role + seniority beats either alone, which beats neither. A combination with no
-          limit row is unlimited.
-        </Alert>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openLimitModal}>
-            New Approval Limit
-          </Button>
-        </Box>
-        <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-          <Table>
-            <TableHead>
-              <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                <TableCell><strong>Role</strong></TableCell>
-                <TableCell><strong>Seniority</strong></TableCell>
-                <TableCell><strong>Permission</strong></TableCell>
-                <TableCell align="right"><strong>Max Amount</strong></TableCell>
-                <TableCell align="right"><strong>Actions</strong></TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(approvalLimits ?? []).length === 0 ? (
-                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4 }}><Typography color="textSecondary">No approval limits set - all approvals are unlimited</Typography></TableCell></TableRow>
-              ) : (
-                approvalLimits.map((limit: any) => (
-                  <TableRow key={limit.id} hover>
-                    <TableCell>{limit.role_name || <Typography component="span" color="textSecondary">Any</Typography>}</TableCell>
-                    <TableCell>{limit.seniority_level_name || <Typography component="span" color="textSecondary">Any</Typography>}</TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{limit.permission_key}</TableCell>
-                    <TableCell align="right">Rs. {Number(limit.max_amount).toLocaleString()}</TableCell>
-                    <TableCell align="right">
-                      <IconButton size="small" color="error" onClick={() => limitDeleteMutation.mutate(limit.id)} title="Delete">
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </TabPanel>
-
       {/* ============ DEPARTMENTS TAB ============ */}
-      <TabPanel value={tab} index={3}>
+      <TabPanel value={tab} index={2}>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
           <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => openDeptModal()}>
             New Department
@@ -541,44 +433,6 @@ const RolesPermissions: React.FC = () => {
           <Button onClick={closeLevelModal}>Cancel</Button>
           <Button variant="contained" onClick={submitLevel} disabled={!levelForm.name || levelForm.rank === '' || levelMutation.isPending}>
             {levelMutation.isPending ? 'Saving...' : 'Save'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ============ Approval Limit Dialog ============ */}
-      <Dialog open={limitModalOpen} onClose={closeLimitModal} maxWidth="xs" fullWidth>
-        <DialogTitle>New Approval Limit</DialogTitle>
-        <DialogContent>
-          {limitError && <Alert severity="error" sx={{ mb: 2 }}>{limitError}</Alert>}
-          <TextField
-            select fullWidth label="Role (optional)" value={limitForm.role_id} margin="normal" size="small"
-            onChange={(e) => setLimitForm({ ...limitForm, role_id: e.target.value })}
-          >
-            <MenuItem value="">Any role</MenuItem>
-            {(roles ?? []).map((r: any) => <MenuItem key={r.id} value={String(r.id)}>{r.name}</MenuItem>)}
-          </TextField>
-          <TextField
-            select fullWidth label="Seniority level (optional)" value={limitForm.seniority_level_id} margin="normal" size="small"
-            onChange={(e) => setLimitForm({ ...limitForm, seniority_level_id: e.target.value })}
-          >
-            <MenuItem value="">Any seniority</MenuItem>
-            {(seniorityLevels ?? []).map((l: any) => <MenuItem key={l.id} value={String(l.id)}>{l.name}</MenuItem>)}
-          </TextField>
-          <TextField
-            select fullWidth label="Permission" value={limitForm.permission_key} margin="normal" size="small"
-            onChange={(e) => setLimitForm({ ...limitForm, permission_key: e.target.value })}
-          >
-            {AMOUNT_LIMITED_PERMISSIONS.map((key) => <MenuItem key={key} value={key}>{key}</MenuItem>)}
-          </TextField>
-          <TextField
-            fullWidth label="Max Amount" type="number" value={limitForm.max_amount} margin="normal" size="small"
-            onChange={(e) => setLimitForm({ ...limitForm, max_amount: e.target.value })}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeLimitModal}>Cancel</Button>
-          <Button variant="contained" onClick={submitLimit} disabled={!limitForm.max_amount || limitMutation.isPending}>
-            {limitMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

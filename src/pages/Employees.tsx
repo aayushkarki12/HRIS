@@ -41,13 +41,25 @@ import {
   MailOutlined as InviteIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
-import { employeeService, rbacService, payrollService, getErrorMessage } from '../services/api';
+import { employeeService, rbacService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Employee } from '../types';
 
-const fmtMoney = (n: number) => `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 const NEW_DESIGNATION_SENTINEL = '__new__';
+
+// Curated common-country subset, not an exhaustive list - default is Nepal
+// since that's where this company is based. The phone number entered here
+// becomes the invite's phone_suggestion (see AcceptInvitation.tsx), which
+// the new hire still has to verify themselves via Firebase OTP.
+const COUNTRY_CODES = [
+  { code: '+977', label: 'Nepal (+977)' },
+  { code: '+91', label: 'India (+91)' },
+  { code: '+1', label: 'US/Canada (+1)' },
+  { code: '+44', label: 'UK (+44)' },
+  { code: '+61', label: 'Australia (+61)' },
+  { code: '+971', label: 'UAE (+971)' },
+  { code: '+65', label: 'Singapore (+65)' },
+];
 
 const employeeSchema = z.object({
   first_name: z.string().min(2, 'First name is required'),
@@ -59,7 +71,7 @@ const employeeSchema = z.object({
   joining_date: z.string().min(1, 'Join date is required'),
   seniority_level_id: z.string().optional(),
   role_id: z.string().optional(),
-  employment_type: z.enum(['full_time', 'probation']),
+  employment_type: z.enum(['full_time', 'probation', 'contractor']),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
@@ -114,6 +126,7 @@ const Employees: React.FC = () => {
   const [creatingDesignation, setCreatingDesignation] = useState(false);
   const [newDesignationName, setNewDesignationName] = useState('');
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [phoneCountryCode, setPhoneCountryCode] = useState('+977');
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
@@ -146,6 +159,7 @@ const Employees: React.FC = () => {
       setIsModalOpen(false);
       reset();
       setError('');
+      setPhoneCountryCode('+977');
       if (created?.invite_link) {
         setInviteLink(created.invite_link);
       }
@@ -156,24 +170,6 @@ const Employees: React.FC = () => {
       setError(msg);
     },
   });
-
-  // Salary/net pay for the list column - pulled from every active
-  // SalaryStructure tenant-wide (admin sees all when no employee_id filter is
-  // passed, see HRIS_backend app/api/v1/payroll.py::get_salary_structures).
-  // "Not set" is shown for anyone without an active structure - never a
-  // fabricated number.
-  const { data: salaryStructures = [] } = useQuery({
-    queryKey: ['salaryStructures'],
-    queryFn: () => payrollService.getSalaryStructures(),
-    enabled: isAdmin,
-  });
-  const netPayByEmployee = useMemo(() => {
-    const map = new Map<number, number>();
-    for (const s of salaryStructures as any[]) {
-      if (s.is_active) map.set(s.employee_id, s.net_pay);
-    }
-    return map;
-  }, [salaryStructures]);
 
   const deleteMutation = useMutation({
     mutationFn: employeeService.delete,
@@ -238,9 +234,10 @@ const Employees: React.FC = () => {
   // /employees/:id detail page instead of this dialog (see EmployeeDetail.tsx).
   const onSubmit = (data: EmployeeFormData) => {
     setError('');
-    const { seniority_level_id, role_id, ...rest } = data;
+    const { seniority_level_id, role_id, phone, ...rest } = data;
     const payload = {
       ...rest,
+      phone: `${phoneCountryCode}${phone.replace(/\D/g, '')}`,
       seniority_level_id: seniority_level_id ? Number(seniority_level_id) : null,
       role_id: role_id && role_id !== NEW_DESIGNATION_SENTINEL ? Number(role_id) : null,
     };
@@ -253,9 +250,10 @@ const Employees: React.FC = () => {
     setError('');
     setCreatingDesignation(false);
     setNewDesignationName('');
+    setPhoneCountryCode('+977');
   };
 
-  const colCount = isAdmin ? 12 : 11;
+  const colCount = isAdmin ? 11 : 10;
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
@@ -322,7 +320,6 @@ const Employees: React.FC = () => {
                   <TableCell>Projects</TableCell>
                   <TableCell>Seniority</TableCell>
                   <TableCell>Employment</TableCell>
-                  <TableCell align="right">Net Pay</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Login</TableCell>
                   {isAdmin && <TableCell align="right">Actions</TableCell>}
@@ -396,20 +393,11 @@ const Employees: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={employee.employment_type === 'probation' ? 'Probation' : 'Full-time'}
-                          color={employee.employment_type === 'probation' ? 'warning' : 'default'}
+                          label={employee.employment_type === 'probation' ? 'Probation' : employee.employment_type === 'contractor' ? 'Contractor' : 'Full-time'}
+                          color={employee.employment_type === 'probation' ? 'warning' : employee.employment_type === 'contractor' ? 'info' : 'default'}
                           size="small"
                           variant="outlined"
                         />
-                      </TableCell>
-                      <TableCell align="right">
-                        {netPayByEmployee.has(employee.id) ? (
-                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#2ecc71' }}>
-                            {fmtMoney(netPayByEmployee.get(employee.id)!)}
-                          </Typography>
-                        ) : (
-                          <Typography variant="body2" color="text.disabled">Not set</Typography>
-                        )}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -537,15 +525,29 @@ const Employees: React.FC = () => {
                   size="small"
                   sx={{ gridColumn: '1 / -1' }}
                 />
-                <TextField
-                  fullWidth
-                  label="Phone"
-                  {...register('phone')}
-                  error={!!errors.phone}
-                  helperText={errors.phone?.message}
-                  size="small"
-                  sx={{ gridColumn: '1 / -1' }}
-                />
+                <Box sx={{ display: 'flex', gap: 1, gridColumn: '1 / -1' }}>
+                  <TextField
+                    select
+                    label="Code"
+                    value={phoneCountryCode}
+                    onChange={(e) => setPhoneCountryCode(e.target.value)}
+                    size="small"
+                    sx={{ minWidth: 130, flexShrink: 0 }}
+                  >
+                    {COUNTRY_CODES.map((c) => (
+                      <MenuItem key={c.code} value={c.code}>{c.label}</MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    fullWidth
+                    label="Phone Number"
+                    placeholder="9812345678"
+                    {...register('phone')}
+                    error={!!errors.phone}
+                    helperText={errors.phone?.message || `Will be saved as ${phoneCountryCode}...`}
+                    size="small"
+                  />
+                </Box>
                 <TextField
                   fullWidth
                   select
@@ -579,14 +581,15 @@ const Employees: React.FC = () => {
                   select
                   label="Employment Status"
                   value={employmentTypeValue ?? 'full_time'}
-                  onChange={(e) => setValue('employment_type', e.target.value as 'full_time' | 'probation', { shouldValidate: true })}
+                  onChange={(e) => setValue('employment_type', e.target.value as 'full_time' | 'probation' | 'contractor', { shouldValidate: true })}
                   error={!!errors.employment_type}
-                  helperText={errors.employment_type?.message || 'Probation employees get a reduced leave allocation until confirmed'}
+                  helperText={errors.employment_type?.message || 'Probation gets a reduced leave allocation; contractors get none'}
                   size="small"
                   sx={{ gridColumn: '1 / -1' }}
                 >
                   <MenuItem value="full_time">Full-time</MenuItem>
                   <MenuItem value="probation">Probation</MenuItem>
+                  <MenuItem value="contractor">Contractor</MenuItem>
                 </TextField>
                 <TextField
                   fullWidth
@@ -595,7 +598,7 @@ const Employees: React.FC = () => {
                   value={seniorityLevelIdValue ?? ''}
                   onChange={(e) => setValue('seniority_level_id', e.target.value)}
                   error={!!errors.seniority_level_id}
-                  helperText={errors.seniority_level_id?.message || 'Affects approval limits, e.g. how large an invoice a Senior Accountant can approve'}
+                  helperText={errors.seniority_level_id?.message || 'Affects seniority-based access within the organization'}
                   size="small"
                   sx={{ gridColumn: '1 / -1' }}
                 >
@@ -734,7 +737,7 @@ const Employees: React.FC = () => {
             <Typography variant="body2" color="text.secondary">
               Permanently delete <strong>{permanentDeleteTarget?.first_name} {permanentDeleteTarget?.last_name}</strong> and
               their login? Their timesheets, leave, attendance, and assignments will be deleted too. If they have
-              related records elsewhere (approvals, vouchers, invoices, etc.) this will be rejected - deactivate
+              related records elsewhere (approvals, timesheets, etc.) this will be rejected - deactivate
               them instead in that case.
             </Typography>
           </DialogContent>

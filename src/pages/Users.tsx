@@ -153,7 +153,7 @@ const Users: React.FC = () => {
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: '#2c3e50' }}>Users & Roles</Typography>
           <Typography variant="body2" color="textSecondary">
-            Manage who can access manager/admin-only features like Accounting and Reports
+            Manage who can access manager/admin-only features like Inventory and Audit Trail
           </Typography>
         </Box>
         <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => refetch()}>Refresh</Button>
@@ -258,8 +258,8 @@ const Users: React.FC = () => {
           {pendingRoleChange && (
             <Alert severity="warning">
               Change <strong>{pendingRoleChange.name}</strong>'s role from <strong>{pendingRoleChange.from}</strong> to <strong>{pendingRoleChange.to}</strong>?
-              {pendingRoleChange.to === 'admin' && ' This grants full system access including all accounting data.'}
-              {pendingRoleChange.to === 'manager' && ' This grants access to Accounting, Invoices, and Reports.'}
+              {pendingRoleChange.to === 'admin' && ' This grants full system access.'}
+              {pendingRoleChange.to === 'manager' && ' This grants access to Inventory and other manager-only areas.'}
             </Alert>
           )}
         </DialogContent>

@@ -7,7 +7,7 @@ import {
   TextField, CircularProgress, Alert, IconButton, MenuItem, InputAdornment, Divider,
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Search as SearchIcon } from '@mui/icons-material';
-import { inventoryService, accountingService, getErrorMessage } from '../services/api';
+import { inventoryService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AccessDenied from '../components/common/AccessDenied';
 
@@ -16,7 +16,6 @@ const money = (n: number) => `$${(n ?? 0).toLocaleString('en-US', { minimumFract
 const emptyForm = {
   sku: '', name: '', description: '', category_id: '', unit_id: '', default_supplier_id: '',
   cost_price: '', sale_price: '', reorder_level: '', min_stock: '', max_stock: '',
-  inventory_account_id: '', cogs_account_id: '',
   opening_quantity: '', opening_warehouse_id: '', opening_unit_cost: '',
 };
 
@@ -38,7 +37,6 @@ const Items: React.FC = () => {
   const { data: units = [] } = useQuery({ queryKey: ['inventory-setup', 'units'], queryFn: () => inventoryService.getUnits({ is_active: true }), enabled: isManager });
   const { data: suppliers = [] } = useQuery({ queryKey: ['inventory-setup', 'suppliers'], queryFn: () => inventoryService.getSuppliers({ is_active: true }), enabled: isManager });
   const { data: warehouses = [] } = useQuery({ queryKey: ['inventory-setup', 'warehouses'], queryFn: () => inventoryService.getWarehouses({ is_active: true }), enabled: isManager });
-  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => accountingService.getAccounts(), enabled: isManager });
 
   const saveMutation = useMutation({
     mutationFn: (data: any) => editing ? inventoryService.updateItem(editing.id, data) : inventoryService.createItem(data),
@@ -66,7 +64,6 @@ const Items: React.FC = () => {
       category_id: item.category_id ?? '', unit_id: item.unit_id ?? '', default_supplier_id: item.default_supplier_id ?? '',
       cost_price: String(item.cost_price ?? ''), sale_price: String(item.sale_price ?? ''),
       reorder_level: String(item.reorder_level ?? ''), min_stock: String(item.min_stock ?? ''), max_stock: item.max_stock != null ? String(item.max_stock) : '',
-      inventory_account_id: item.inventory_account_id ?? '', cogs_account_id: item.cogs_account_id ?? '',
       opening_quantity: '', opening_warehouse_id: '', opening_unit_cost: '',
     } : emptyForm);
     setError('');
@@ -84,8 +81,6 @@ const Items: React.FC = () => {
       cost_price: Number(form.cost_price) || 0, sale_price: Number(form.sale_price) || 0,
       reorder_level: Number(form.reorder_level) || 0, min_stock: Number(form.min_stock) || 0,
       max_stock: form.max_stock ? Number(form.max_stock) : null,
-      inventory_account_id: form.inventory_account_id ? Number(form.inventory_account_id) : null,
-      cogs_account_id: form.cogs_account_id ? Number(form.cogs_account_id) : null,
     };
     if (!editing) {
       payload.opening_quantity = Number(form.opening_quantity) || 0;
@@ -199,14 +194,6 @@ const Items: React.FC = () => {
             <TextField label="Reorder Level" type="number" value={form.reorder_level} onChange={(e) => setForm({ ...form, reorder_level: e.target.value })} size="small" />
             <TextField label="Min Stock" type="number" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} size="small" />
             <TextField label="Max Stock (optional)" type="number" value={form.max_stock} onChange={(e) => setForm({ ...form, max_stock: e.target.value })} size="small" />
-            <TextField select label="Inventory Account (optional)" value={form.inventory_account_id} onChange={(e) => setForm({ ...form, inventory_account_id: e.target.value })} size="small">
-              <MenuItem value="">None</MenuItem>
-              {accounts.filter((a: any) => a.is_active).map((a: any) => <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>)}
-            </TextField>
-            <TextField select label="COGS Account (optional)" value={form.cogs_account_id} onChange={(e) => setForm({ ...form, cogs_account_id: e.target.value })} size="small">
-              <MenuItem value="">None</MenuItem>
-              {accounts.filter((a: any) => a.is_active).map((a: any) => <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>)}
-            </TextField>
           </Box>
           <TextField
             fullWidth multiline rows={2} label="Description" value={form.description}

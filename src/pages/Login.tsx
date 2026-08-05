@@ -8,7 +8,6 @@ import {
   Box,
   InputAdornment,
   IconButton,
-  Divider,
 } from '@mui/material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -92,10 +91,10 @@ const Login: React.FC = () => {
           HRIS System
         </Typography>
         <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9375rem', lineHeight: 1.6, mb: 4 }}>
-          Human Resource Information System — manage employees, leaves, payroll, and more in one place.
+          Human Resource Information System — manage employees, leaves, projects, and more in one place.
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {['Multi-tenant architecture', 'Leave & attendance tracking', 'Expense claims & payroll', 'Full accounting module'].map((f) => (
+          {['Multi-tenant architecture', 'Leave & attendance tracking', 'Project & resource management', 'Inventory tracking'].map((f) => (
             <Box key={f} sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
               <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.6)', flexShrink: 0 }} />
               <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem' }}>{f}</Typography>
@@ -146,7 +145,8 @@ const Login: React.FC = () => {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <TextField
                 fullWidth
-                label="Username or Email"
+                label="Phone Number"
+                placeholder="+15551234567 (or your username/email)"
                 name="username"
                 value={formData.username}
                 onChange={handleChange}
@@ -216,20 +216,6 @@ const Login: React.FC = () => {
               Forgot password?
             </Button>
           </Box>
-
-          <Divider sx={{ my: 3 }} />
-
-          <Typography variant="body2" color="text.secondary" align="center">
-            Don't have an account?{' '}
-            <Button
-              component={RouterLink}
-              to="/register"
-              size="small"
-              sx={{ fontWeight: 600, p: 0, minWidth: 0, verticalAlign: 'baseline' }}
-            >
-              Register here
-            </Button>
-          </Typography>
         </motion.div>
       </Box>
     </Box>

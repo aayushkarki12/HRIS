@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Card, CardContent, Typography, Divider, Skeleton,
-  Alert, LinearProgress, Chip, List, ListItem, ListItemText, ListItemIcon,
+  Alert, LinearProgress, Chip, List, ListItem, ListItemText, ListItemIcon, Button,
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -31,8 +32,7 @@ import {
 } from 'recharts';
 import {
   employeeService, resourceService, projectService, assignmentService,
-  leaveService, attendanceService, auditLogService,
-  expenseService, voucherService, budgetService, invoiceService,
+  leaveService, attendanceService, auditLogService, getErrorMessage,
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -530,14 +530,9 @@ const ApprovalsWidgets: React.FC<{ startIndex: number }> = ({ startIndex }) => {
 
   const canApproveLeave = hasPermission('leave.approve');
   const canManageResources = hasPermission('resources.manage');
-  const canApproveExpenses = hasPermission('expense.approve_manager') || hasPermission('expense.approve_accounting');
   const canManageProjects = hasPermission('projects.manage') || hasPermission('assignments.manage');
-  const canApproveVouchers = hasPermission('voucher.approve');
-  const canApproveBudgets = hasPermission('budget.approve');
-  const canApproveInvoices = hasPermission('invoice.approve');
 
-  const anyWidget = canApproveLeave || canManageResources || canApproveExpenses || canManageProjects
-    || canApproveVouchers || canApproveBudgets || canApproveInvoices;
+  const anyWidget = canApproveLeave || canManageResources || canManageProjects;
 
   const { data: pendingLeaves = [] } = useQuery({
     queryKey: ['leaves', 'pending'], queryFn: leaveService.getPending, retry: 1, enabled: canApproveLeave,
@@ -545,35 +540,18 @@ const ApprovalsWidgets: React.FC<{ startIndex: number }> = ({ startIndex }) => {
   const { data: pendingResourceRequests = [] } = useQuery({
     queryKey: ['resource-requests', 'pending'], queryFn: () => resourceService.getRequests('pending'), retry: 1, enabled: canManageResources,
   });
-  const { data: pendingExpenses = [] } = useQuery({
-    queryKey: ['expenses', 'pending'], queryFn: expenseService.getPending, retry: 1, enabled: canApproveExpenses,
-  });
   const { data: managedProjects = [] } = useQuery({
     queryKey: ['projects'], queryFn: projectService.getAll, retry: 1, enabled: canManageProjects,
-  });
-  const { data: pendingVouchers = [] } = useQuery({
-    queryKey: ['vouchers', 'submitted'], queryFn: () => voucherService.getAll({ status: 'submitted' }), retry: 1, enabled: canApproveVouchers,
-  });
-  const { data: pendingBudgets = [] } = useQuery({
-    queryKey: ['budgets', 'submitted'], queryFn: () => budgetService.getBudgets({ status: 'submitted' }), retry: 1, enabled: canApproveBudgets,
-  });
-  const { data: invoices = [] } = useQuery({
-    queryKey: ['invoices'], queryFn: () => invoiceService.getAll(), retry: 1, enabled: canApproveInvoices,
   });
 
   if (!anyWidget) return null;
 
   const activeManagedProjects = (managedProjects as any[]).filter((p) => p.status === 'active');
-  const invoicesPending = (invoices as any[]).filter((i) => ['sent', 'partially_paid'].includes(i.status));
 
   const stats = [
     canApproveLeave && { title: 'Pending Leave Approvals', value: pendingLeaves.length, icon: LeaveIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: 'Awaiting your decision', path: '/leaves' },
     canManageResources && { title: 'Pending Resource Requests', value: pendingResourceRequests.length, icon: ResourceRequestIcon, color: '#DC2626', bgColor: '#FEF2F2', subtitle: 'Awaiting your decision', path: '/resources' },
-    canApproveExpenses && { title: 'Pending Expense Claims', value: pendingExpenses.length, icon: ExpenseIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: 'Needs your approval', path: '/expense-claims' },
     canManageProjects && { title: 'Active Projects', value: activeManagedProjects.length, icon: FolderIcon, color: '#4F46E5', bgColor: '#EEF2FF', subtitle: 'You manage', path: '/projects' },
-    canApproveVouchers && { title: 'Pending Vouchers', value: pendingVouchers.length, icon: PayrollIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: 'Submitted for approval', path: '/vouchers' },
-    canApproveBudgets && { title: 'Pending Budgets', value: pendingBudgets.length, icon: PayrollIcon, color: '#16A34A', bgColor: '#F0FDF4', subtitle: 'Submitted for approval', path: '/budgets' },
-    canApproveInvoices && { title: 'Invoices Awaiting Payment', value: invoicesPending.length, icon: InvoiceIcon, color: '#4F46E5', bgColor: '#EEF2FF', subtitle: 'Sent or partially paid', path: '/invoices' },
   ].filter(Boolean) as any[];
 
   return (
@@ -605,7 +583,8 @@ const statusMeta: Record<string, { color: string; icon: any }> = {
 };
 
 const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName }) => {
-  const { data: profile, isLoading: profileLoading } = useQuery({
+  const queryClient = useQueryClient();
+  const { isLoading: profileLoading, isError: profileError } = useQuery({
     queryKey: ['profile', 'me'], queryFn: employeeService.getMyProfile, retry: 1,
   });
 
@@ -625,6 +604,15 @@ const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName
     queryKey: ['assignments'], queryFn: assignmentService.getAll, retry: 1,
   });
 
+  const clockInMutation = useMutation({
+    mutationFn: () => attendanceService.clockIn(),
+    onSuccess: () => {
+      toast.success('Clocked in');
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to clock in')),
+  });
+
   const isLoading = profileLoading || leavesLoading || balanceLoading || attLoading || assignLoading;
 
   const pendingLeaveCount = myLeaves.filter((l: any) => l.status === 'pending').length;
@@ -642,6 +630,50 @@ const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName
     { title: 'My Resources', value: activeAssignments.length, icon: ComputerIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: 'Currently assigned to you', path: '/assignments' },
     { title: 'Approved Leaves', value: approvedLeaveCount, icon: CheckCircleIcon, color: '#16A34A', bgColor: '#F0FDF4', subtitle: 'This year', path: '/leaves' },
   ];
+
+  // Any authenticated user (even one with no linked Employee record and no
+  // real role/permissions) used to reach this page and hit broken/erroring
+  // widgets, since the /dashboard route has no router-level guard and this
+  // component fired all its queries unconditionally. A missing employee
+  // profile means the account isn't actually set up yet - show a clear
+  // message instead of letting the rest of this component error out.
+  if (!profileLoading && profileError) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <Box sx={{ textAlign: 'center', maxWidth: 420 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Your account isn't fully set up</Typography>
+          <Typography variant="body2" color="text.secondary">
+            There's no employee record linked to your login yet. Contact an admin to finish setting up your account.
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
+  // Regular employees must clock in before seeing the rest of their
+  // dashboard (admins/managers are exempt - they get AdminDashboard instead).
+  if (!isLoading && !attendanceStats?.today?.clocked_in) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <Box sx={{ textAlign: 'center', maxWidth: 420 }}>
+          <AttendanceIcon sx={{ fontSize: 40, color: '#94A3B8', mb: 1.5 }} />
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+            Welcome back, {userFirstName}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Clock in to see your dashboard for today.
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={() => clockInMutation.mutate()}
+            disabled={clockInMutation.isPending}
+          >
+            {clockInMutation.isPending ? 'Clocking in…' : 'Clock In'}
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box>
