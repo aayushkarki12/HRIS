@@ -14,7 +14,13 @@ from ...models.user import User
 from ...models.tenant import Tenant
 from ...models.employee import Employee
 from ...models.attendance import Attendance, WorkLocation
-from ...schemas.attendance import AttendanceResponse
+from ...models.location_ping import LocationPing
+from ...schemas.attendance import (
+    AttendanceResponse,
+    LocationPingCreate,
+    LocationPingResponse,
+    EmployeeLiveLocation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +29,16 @@ router = APIRouter(prefix="/attendance", tags=["attendance"])
 # How late a "fixed" employee can clock in past their fixed_clock_in_time
 # before it's tagged "late" - a policy judgment call, not a legal minimum.
 LATE_GRACE_MINUTES = 15
+
+# A device that hasn't reported in this long is shown as offline. The app
+# pings every ~15 minutes, so this is two missed intervals plus slack -
+# tight enough to notice a dead device, loose enough not to flag every
+# tunnel and elevator.
+OFFLINE_AFTER_MINUTES = 35
+
+# Cap on one flushed offline batch. A phone that was dark for a week could
+# otherwise post thousands of rows in a single unbounded request.
+MAX_PINGS_PER_BATCH = 200
 
 def get_current_datetime():
     """Get current datetime with timezone."""
@@ -396,3 +412,175 @@ def clock_out(
         db.rollback()
         logger.error(f"Error in clock_out: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to clock out: {str(e)}")
+
+
+@router.post("/location-ping", status_code=status.HTTP_201_CREATED)
+def submit_location_pings(
+    pings: List[LocationPingCreate],
+    current_employee: Employee = Depends(get_current_employee),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Periodic whereabouts report from the mobile app.
+
+    Takes a batch rather than a single fix because the app keeps recording
+    while the device is offline and flushes the queue once connectivity is
+    back - each queued fix carries its own recorded_at and was_queued=True,
+    so a late arrival is still placed at the time it actually happened.
+
+    Each fix is resolved against the employee's assigned work location (or,
+    for non-fixed employees, every active site) using exactly the same
+    geofence logic as clock-in, so the admin view never re-derives it.
+    """
+    if not pings:
+        return {"accepted": 0}
+
+    if len(pings) > MAX_PINGS_PER_BATCH:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"At most {MAX_PINGS_PER_BATCH} pings per request",
+        )
+
+    now = get_current_datetime()
+    accepted = 0
+    for ping in pings:
+        recorded_at = ping.recorded_at
+        if recorded_at.tzinfo is None:
+            recorded_at = recorded_at.replace(tzinfo=pytz.UTC)
+        # A device clock can be wrong or deliberately set forward; clamp
+        # future timestamps to now so one bad phone can't park a ping at the
+        # top of the "latest" ordering forever.
+        if recorded_at > now:
+            recorded_at = now
+
+        location_status, _label, _wl_id, location_name = _location_status_for(
+            current_employee, tenant, db, ping.latitude, ping.longitude
+        )
+        db.add(LocationPing(
+            employee_id=current_employee.id,
+            tenant_id=tenant.id,
+            latitude=ping.latitude,
+            longitude=ping.longitude,
+            accuracy=ping.accuracy,
+            battery_level=ping.battery_level,
+            location_status=location_status,
+            location_name=location_name,
+            was_queued=ping.was_queued,
+            recorded_at=recorded_at,
+        ))
+        accepted += 1
+
+    db.commit()
+    return {"accepted": accepted, "server_time": now.isoformat()}
+
+
+@router.get("/live-locations", response_model=List[EmployeeLiveLocation])
+def get_live_locations(
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Where every active employee was last seen (admin/manager only).
+
+    device_status is derived from ping age rather than stored: a phone that
+    loses connectivity, is switched off, or has the app killed simply stops
+    reporting, so "offline" is the absence of recent pings. no_data means
+    the employee has never reported - typically the app isn't installed.
+    """
+    if current_user.role not in ["admin", "manager"] and not user_has_permission(db, current_user, "attendance.manage"):
+        raise HTTPException(status_code=403, detail="Not authorized to view employee locations")
+
+    employees = db.query(Employee).filter(
+        Employee.tenant_id == tenant.id,
+        Employee.is_active == True
+    ).all()
+    if not employees:
+        return []
+
+    employee_ids = [e.id for e in employees]
+    now = get_current_datetime()
+
+    # One query for the whole tenant, then pick the newest ping per employee
+    # in Python. Postgres DISTINCT ON would be tighter, but this endpoint is
+    # bounded by (employees x pings-in-window), not by the full history.
+    window_start = now - timedelta(hours=24)
+    recent_pings = db.query(LocationPing).filter(
+        LocationPing.tenant_id == tenant.id,
+        LocationPing.employee_id.in_(employee_ids),
+        LocationPing.recorded_at >= window_start,
+    ).order_by(LocationPing.recorded_at.desc()).all()
+
+    latest_by_employee = {}
+    for ping in recent_pings:
+        latest_by_employee.setdefault(ping.employee_id, ping)
+
+    today = date.today()
+    clocked_in_ids = {
+        row.employee_id for row in db.query(Attendance).filter(
+            Attendance.tenant_id == tenant.id,
+            Attendance.date == today,
+            Attendance.clock_in.isnot(None),
+        ).all()
+    }
+
+    results = []
+    for employee in employees:
+        ping = latest_by_employee.get(employee.id)
+        if ping is None:
+            device_status, minutes = "no_data", None
+        else:
+            recorded_at = ping.recorded_at
+            if recorded_at.tzinfo is None:
+                recorded_at = recorded_at.replace(tzinfo=pytz.UTC)
+            minutes = (now - recorded_at).total_seconds() / 60
+            device_status = "online" if minutes <= OFFLINE_AFTER_MINUTES else "offline"
+
+        results.append(EmployeeLiveLocation(
+            employee_id=employee.id,
+            employee_name=f"{employee.first_name} {employee.last_name}".strip(),
+            employee_code=employee.employee_id,
+            device_status=device_status,
+            minutes_since_last_ping=round(minutes, 1) if minutes is not None else None,
+            clocked_in=employee.id in clocked_in_ids,
+            last_ping=LocationPingResponse.model_validate(ping) if ping else None,
+        ))
+
+    # Most interesting first: people whose device has gone dark.
+    order = {"offline": 0, "online": 1, "no_data": 2}
+    results.sort(key=lambda r: (order[r.device_status], r.employee_name))
+    return results
+
+
+@router.get("/location-history/{employee_id}", response_model=List[LocationPingResponse])
+def get_location_history(
+    employee_id: int,
+    start: Optional[datetime] = Query(None, description="Only pings recorded at/after this time"),
+    end: Optional[datetime] = Query(None, description="Only pings recorded at/before this time"),
+    limit: int = Query(500, le=2000),
+    current_user: User = Depends(get_current_active_user),
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Ping trail for one employee. Admins/managers can read anyone in the
+    tenant; everyone else only their own record."""
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id,
+        Employee.tenant_id == tenant.id
+    ).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    is_manager = current_user.role in ["admin", "manager"] or user_has_permission(db, current_user, "attendance.manage")
+    if not is_manager and employee.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to view this employee's location history")
+
+    query = db.query(LocationPing).filter(
+        LocationPing.tenant_id == tenant.id,
+        LocationPing.employee_id == employee_id,
+    )
+    if start:
+        query = query.filter(LocationPing.recorded_at >= start)
+    if end:
+        query = query.filter(LocationPing.recorded_at <= end)
+
+    return query.order_by(LocationPing.recorded_at.desc()).limit(limit).all()
