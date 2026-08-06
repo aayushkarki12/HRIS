@@ -19,17 +19,11 @@ from .api import (
     leaves_router,
     attendance_router,
     timesheets_router,
-    accounting_router,
-    payroll_router,
-    expense_router,
-    invoice_router,
     work_locations_router,
     audit_logs_router,
     notifications_router,
     resource_requests_router,
-    voucher_router,
     inventory_router,
-    budget_router,
     rbac_router,
 )
 
@@ -68,17 +62,11 @@ app.include_router(documents_router, prefix="/api/v1")
 app.include_router(leaves_router, prefix="/api/v1")
 app.include_router(attendance_router, prefix="/api/v1")  # Make sure this line exists
 app.include_router(timesheets_router, prefix="/api/v1")
-app.include_router(accounting_router, prefix="/api/v1")
-app.include_router(payroll_router, prefix="/api/v1")
-app.include_router(expense_router, prefix="/api/v1")
-app.include_router(invoice_router, prefix="/api/v1")
 app.include_router(work_locations_router, prefix="/api/v1")
 app.include_router(audit_logs_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(resource_requests_router, prefix="/api/v1")
-app.include_router(voucher_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")
-app.include_router(budget_router, prefix="/api/v1")
 app.include_router(rbac_router, prefix="/api/v1")
 
 # Avatars are low-sensitivity and rendered via plain <img> tags all over the
@@ -106,7 +94,7 @@ def root():
             "Attendance Tracking",
             "Timesheet Management",
             "Document Management",
-            "Accounting",
+            "Inventory Management",
             "Multi-Tenant Support"
         ]
     }

@@ -138,8 +138,6 @@ class ItemBase(BaseModel):
     reorder_level: float = Field(0, ge=0)
     min_stock: float = Field(0, ge=0)
     max_stock: Optional[float] = Field(None, ge=0)
-    inventory_account_id: Optional[int] = None
-    cogs_account_id: Optional[int] = None
     is_active: bool = True
 
 
@@ -161,8 +159,6 @@ class ItemUpdate(BaseModel):
     reorder_level: Optional[float] = Field(None, ge=0)
     min_stock: Optional[float] = Field(None, ge=0)
     max_stock: Optional[float] = Field(None, ge=0)
-    inventory_account_id: Optional[int] = None
-    cogs_account_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -193,7 +189,6 @@ class StockInRequest(BaseModel):
     reference_number: Optional[str] = None
     supplier_id: Optional[int] = None
     notes: Optional[str] = None
-    post_voucher: bool = False
 
 
 class StockOutRequest(BaseModel):
@@ -203,7 +198,6 @@ class StockOutRequest(BaseModel):
     reference_type: str = Field("sale", pattern="^(sale|adjustment|damaged)$")
     reference_number: Optional[str] = None
     notes: Optional[str] = None
-    post_voucher: bool = False
 
 
 class StockTransferRequest(BaseModel):
@@ -228,7 +222,6 @@ class StockMovementResponse(BaseModel):
     related_warehouse_id: Optional[int] = None
     reference_type: Optional[str] = None
     reference_id: Optional[int] = None
-    voucher_id: Optional[int] = None
     notes: Optional[str] = None
     created_by: Optional[int] = None
     created_at: datetime

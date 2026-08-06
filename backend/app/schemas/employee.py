@@ -14,7 +14,14 @@ class EmployeeBase(BaseModel):
     # "full_time" | "probation" - admin-set, drives a reduced leave
     # allocation while on probation (see app/api/v1/leave.py). Not part of
     # update_my_profile's self-service field whitelist.
-    employment_type: str = Field("full_time", pattern="^(full_time|probation)$")
+    employment_type: str = Field("full_time", pattern="^(full_time|probation|contractor)$")
+    # "fixed" | "individual" | "contractor" - admin-set, drives clock-in/out
+    # rules (see app/api/v1/attendance.py). Not part of update_my_profile's
+    # self-service field whitelist.
+    attendance_type: str = Field("individual", pattern="^(fixed|individual|contractor)$")
+    assigned_work_location_id: Optional[int] = None
+    fixed_clock_in_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    fixed_clock_out_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     # Self-service fields - all optional
     profile_picture: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -58,7 +65,12 @@ class EmployeeUpdate(BaseModel):
     # include this, so self-service can't set it.
     seniority_level_id: Optional[int] = None
     # Admin-only in practice - see EmployeeBase.employment_type.
-    employment_type: Optional[str] = Field(None, pattern="^(full_time|probation)$")
+    employment_type: Optional[str] = Field(None, pattern="^(full_time|probation|contractor)$")
+    # Admin-only in practice - see EmployeeBase.attendance_type.
+    attendance_type: Optional[str] = Field(None, pattern="^(fixed|individual|contractor)$")
+    assigned_work_location_id: Optional[int] = None
+    fixed_clock_in_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    fixed_clock_out_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     # NOT a column on Employee - purely controls the timestamp of the
     # resulting "career_change" audit-log entry (see update_employee), so a
     # promotion/status change recorded today can be effective-dated to a

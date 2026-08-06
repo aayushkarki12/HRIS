@@ -9,17 +9,11 @@ from .document import router as documents_router
 from .leave import router as leaves_router
 from .attendance import router as attendance_router
 from .timesheet import router as timesheets_router
-from .accounting import router as accounting_router
-from .payroll import router as payroll_router
-from .expense import router as expense_router
-from .invoice import router as invoice_router
 from .work_location import router as work_locations_router
 from .audit_log import router as audit_logs_router
 from .notification import router as notifications_router
 from .resource_requests import router as resource_requests_router
-from .voucher import router as voucher_router
 from .inventory import router as inventory_router
-from .budget import router as budget_router
 from .rbac import router as rbac_router
 
 __all__ = [
@@ -34,16 +28,10 @@ __all__ = [
     "leaves_router",
     "attendance_router",
     "timesheets_router",
-    "accounting_router",
-    "payroll_router",
-    "expense_router",
-    "invoice_router",
     "work_locations_router",
     "audit_logs_router",
     "notifications_router",
     "resource_requests_router",
-    "voucher_router",
     "inventory_router",
-    "budget_router",
     "rbac_router",
 ]

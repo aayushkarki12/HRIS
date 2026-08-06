@@ -15,30 +15,6 @@ class UserBase(BaseModel):
         return v
 
 
-class UserCreate(UserBase):
-    """
-    Schema for self-registration. Deliberately has NO `role` field - the
-    register endpoint always assigns role="user" regardless of what's sent,
-    but keeping `role` out of this schema entirely means there's nothing for
-    a future code change to accidentally start honoring. Promoting someone to
-    manager/admin is only possible via PUT /users/{id} by an existing admin.
-    """
-    password: str = Field(..., min_length=8, max_length=100)
-    phone: Optional[str] = Field(None, min_length=10, max_length=20)
-    department: str = Field("General", min_length=2, max_length=50)
-    position: str = Field("Staff", min_length=2, max_length=50)
-    join_date: Optional[date] = None
-    tenant_subdomain: str = Field("default", min_length=2, max_length=50)
-
-    @validator('password')
-    def password_strength(cls, v):
-        from ..core.security import validate_password_strength
-        error = validate_password_strength(v)
-        if error:
-            raise ValueError(error)
-        return v
-
-
 class UserUpdate(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[EmailStr] = None
@@ -140,6 +116,10 @@ class InvitationDetails(BaseModel):
     joining_date: Optional[date] = None
     tenant_name: str
     username_suggestion: str
+    # Pre-filled from Employee.phone (collected by the admin at employee-
+    # creation time) as a starting point - the new hire still has to verify
+    # it themselves via Firebase OTP, this is just a suggestion.
+    phone_suggestion: Optional[str] = None
 
 
 class AcceptInvitationRequest(BaseModel):
@@ -152,6 +132,14 @@ class AcceptInvitationRequest(BaseModel):
         if not v.isalnum():
             raise ValueError('Username must be alphanumeric')
         return v
+
+
+class VerifyPhoneRequest(BaseModel):
+    """Body for POST /auth/verify-phone - the frontend completes the actual
+    OTP send/check with Firebase's client SDK and hands us the resulting ID
+    token to verify server-side (see app/core/firebase.py)."""
+    token: str
+    id_token: str
 
 
 class TokenData(BaseModel):

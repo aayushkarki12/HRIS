@@ -350,8 +350,13 @@ PROBATION_LEAVE_RATIO = 0.5
 
 def _allocated_days_for(employee: Employee, leave_type: LeaveType) -> float:
     """Annual day allocation for one employee/leave-type, applying the
-    probation reduction when applicable."""
+    probation reduction when applicable. Contractors get 0 - a policy
+    judgment call (not a legal standard) that contractors aren't covered by
+    the standard employee leave policy; adjust here if that's wrong for a
+    given tenant."""
     days = leave_type.days_per_year or 0
+    if employee.employment_type == "contractor":
+        return 0
     if employee.employment_type == "probation":
         return round(days * PROBATION_LEAVE_RATIO * 2) / 2  # nearest half day
     return days

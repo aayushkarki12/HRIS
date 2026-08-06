@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     SEAWEED_BUCKET_NAME: str = "hris"
     PRESIGNED_URL_TTL_SECONDS: int = 300
 
+    # Firebase Admin SDK - used server-side only to verify the ID token the
+    # frontend gets back after a user completes phone OTP verification via
+    # the Firebase JS SDK (client-side). This backend never talks to
+    # Firebase's SMS API directly - see app/core/firebase.py. Requires a
+    # service-account JSON key from the Firebase project's console (Project
+    # Settings > Service Accounts > Generate new private key); point this at
+    # its path on disk (mounted into the container, not committed to git).
+    FIREBASE_SERVICE_ACCOUNT_PATH: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]

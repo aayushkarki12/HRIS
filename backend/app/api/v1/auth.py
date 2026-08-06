@@ -24,15 +24,15 @@ from ...models.tenant import Tenant
 from ...models.refresh_token import RefreshToken
 from ...models.password_reset_token import PasswordResetToken
 from ...models.rbac import Role, SeniorityLevel
-from .employees import _generate_employee_id
 from ...schemas.user import (
-    UserCreate, UserResponse, Token,
+    UserResponse, Token,
     RefreshTokenRequest, AccessTokenResponse,
     ForgotPasswordRequest, ResetPasswordRequest,
-    InvitationDetails, AcceptInvitationRequest,
+    InvitationDetails, AcceptInvitationRequest, VerifyPhoneRequest,
 )
 from ...core.security import validate_password_strength
 from ...core.email import send_password_reset_email
+from ...core.firebase import verify_phone_id_token
 
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 60
 
@@ -61,81 +61,6 @@ def _issue_refresh_token(db: Session, user: User, tenant_id: int) -> str:
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register_user(
-    user_data: UserCreate,
-    db: Session = Depends(get_db)
-):
-    """
-    Register a new user with employee profile.
-    """
-    # Find or create tenant by subdomain
-    tenant = db.query(Tenant).filter(Tenant.subdomain == user_data.tenant_subdomain).first()
-    
-    if not tenant:
-        tenant = Tenant(
-            name=user_data.tenant_subdomain.title(),
-            subdomain=user_data.tenant_subdomain,
-            email=user_data.email,
-            is_active=True
-        )
-        db.add(tenant)
-        db.flush()
-        logger.info(f"✅ Created new tenant: {user_data.tenant_subdomain}")
-    
-    # Check if user already exists
-    existing_user = db.query(User).filter(
-        (User.username == user_data.username) | (User.email == user_data.email),
-        User.tenant_id == tenant.id
-    ).first()
-    
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username or email already exists"
-        )
-    
-    # Create new user
-    hashed_password = get_password_hash(user_data.password)
-    db_user = User(
-        username=user_data.username,
-        email=user_data.email,
-        hashed_password=hashed_password,
-        first_name=user_data.first_name,
-        last_name=user_data.last_name,
-        role="user",
-        is_active=True,
-        tenant_id=tenant.id
-    )
-    
-    db.add(db_user)
-    db.flush()
-    
-    # Generate employee ID (same tenant-prefixed scheme as admin-created
-    # employees - see employees.py::_generate_employee_id)
-    employee_id = _generate_employee_id(db, tenant)
-    
-    # Create employee profile
-    db_employee = Employee(
-        employee_id=employee_id,
-        first_name=user_data.first_name,
-        last_name=user_data.last_name,
-        email=user_data.email,
-        phone=user_data.phone or "",
-        department=user_data.department,
-        position=user_data.position,
-        joining_date=user_data.join_date or date.today(),
-        is_active=True,
-        user_id=db_user.id,
-        tenant_id=tenant.id
-    )
-    
-    db.add(db_employee)
-    db.commit()
-    db.refresh(db_user)
-    
-    return db_user
-
 @router.get("/test-tenant")
 def test_tenant(
     tenant: Tenant = Depends(get_current_tenant)
@@ -158,9 +83,10 @@ def login(
     """
     Login endpoint using OAuth2 password flow.
     """
-    # Find user by username or email
+    # Find user by phone, username, or email - phone is the default framing
+    # on the login form now, but username/email still work.
     user = db.query(User).filter(
-        (User.username == form_data.username) | (User.email == form_data.username)
+        (User.username == form_data.username) | (User.email == form_data.username) | (User.phone == form_data.username)
     ).first()
 
     if not user:
@@ -189,6 +115,16 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User account is deactivated"
+        )
+
+    # Every account that existed before phone verification was introduced was
+    # grandfathered to phone_verified=True by that migration - this only
+    # actually blocks accounts created afterwards (via the invite-acceptance
+    # flow) that haven't completed Firebase phone OTP verification yet.
+    if not user.phone_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please verify your phone number before logging in. Use the link from your invitation email."
         )
 
     # Get tenant info
@@ -450,7 +386,37 @@ def get_invitation_details(token: str = Query(...), db: Session = Depends(get_db
         joining_date=employee.joining_date if employee else None,
         tenant_name=tenant.name if tenant else "",
         username_suggestion=user.username,
+        phone_suggestion=employee.phone if employee and employee.phone else None,
     )
+
+
+@router.post("/verify-phone")
+def verify_phone(data: VerifyPhoneRequest, db: Session = Depends(get_db)):
+    """Verify a phone number via Firebase phone OTP, as part of accepting an
+    employee invite - self-registration was removed, so this is the only
+    place a phone number gets collected/verified. The frontend completes the
+    actual OTP send/check with Firebase's client SDK and hands us the
+    resulting ID token; this backend only verifies it server-side and never
+    talks to Firebase's SMS API directly (see app/core/firebase.py)."""
+    db_token = _get_valid_invite_token(db, data.token)
+
+    phone_number = verify_phone_id_token(data.id_token)
+    if not phone_number:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone verification failed. Please try again.")
+
+    user = db.query(User).filter(User.id == db_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    existing = db.query(User).filter(User.phone == phone_number, User.id != user.id).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This phone number is already linked to another account")
+
+    user.phone = phone_number
+    user.phone_verified = True
+    db.commit()
+
+    return {"message": "Phone number verified", "phone": phone_number}
 
 
 @router.get("/invitation/check-username")

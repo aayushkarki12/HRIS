@@ -48,31 +48,15 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("timesheet.approve", "Leave & Attendance", "Approve timesheets"),
     ("attendance.manage", "Leave & Attendance", "Manage attendance records and work locations"),
     ("documents.verify", "Leave & Attendance", "Verify uploaded employee documents"),
-    # Finance
-    ("voucher.create", "Finance", "Create vouchers"),
-    ("voucher.approve", "Finance", "Approve submitted vouchers"),
-    ("voucher.post", "Finance", "Post vouchers to the general ledger"),
-    ("journal_entry.manage", "Finance", "Create and post journal entries directly"),
-    ("invoice.manage", "Finance", "Create and send invoices"),
-    ("invoice.approve", "Finance", "Record payments against invoices"),
-    ("expense.approve_manager", "Finance", "Give first (manager) approval on expense claims"),
-    ("expense.approve_accounting", "Finance", "Give final (accounting) approval and release payment on expense claims"),
-    ("budget.approve", "Finance", "Approve submitted budgets"),
-    ("payroll.manage", "Finance", "Run payroll and manage salary structures"),
-    ("payroll.view_all", "Finance", "View every employee's salary, not just their own"),
-    ("inventory.manage", "Finance", "Manage warehouses, items, and stock movements"),
-    ("reports.financial.view", "Finance", "View financial reports and the general ledger"),
-    ("accounting.manage", "Finance", "Manage chart of accounts, ledger groups, cost centers, tax rates, and bank reconciliation"),
+    # Inventory
+    ("inventory.manage", "Inventory", "Manage warehouses, items, and stock movements"),
 ]
 
 # The permissions ApprovalLimit can put a numeric ceiling on - "approve
 # something with a dollar amount" actions the seniority axis is meant to gate.
-AMOUNT_LIMITED_PERMISSIONS = {
-    "voucher.approve",
-    "invoice.approve",
-    "expense.approve_accounting",
-    "budget.approve",
-}
+# No amount-limited permissions remain since the Finance/Accounting suite
+# (vouchers, invoices, expense claims, budgets) was removed.
+AMOUNT_LIMITED_PERMISSIONS: set = set()
 
 
 @dataclass

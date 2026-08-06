@@ -1,9 +1,7 @@
 """
 Stock ledger service - the single place that knows how to append a
 StockMovement row and keep the running quantity / weighted-average cost
-correct. Optionally mints an accounting Voucher through the existing
-voucher_service so a stock movement's financial impact lands in the same
-double-entry ledger everything else does, rather than a parallel one.
+correct.
 """
 from datetime import date
 from typing import Optional
@@ -12,7 +10,6 @@ from sqlalchemy.orm import Session
 from ..models.inventory import Item, StockMovement
 from ..models.user import User
 from ..models.tenant import Tenant
-from .voucher_service import create_manual_voucher
 
 
 def _last_movement(
@@ -63,7 +60,6 @@ def record_stock_in(
     db: Session, tenant: Tenant, current_user: User, item: Item, warehouse_id: int,
     quantity: float, unit_cost: float, reference_type: str = "purchase",
     reference_number: Optional[str] = None, notes: Optional[str] = None,
-    post_voucher: bool = False, contra_account_id: Optional[int] = None,
     movement_date: Optional[date] = None,
 ) -> StockMovement:
     last = _last_movement(db, tenant.id, item.id, warehouse_id, for_update=True)
@@ -83,21 +79,6 @@ def record_stock_in(
     db.add(movement)
     db.flush()
 
-    if post_voucher and item.inventory_account_id and contra_account_id:
-        amount = round(quantity * unit_cost, 2)
-        voucher = create_manual_voucher(
-            db, tenant, current_user, voucher_type="purchase",
-            voucher_date=movement_date or date.today(),
-            description=f"Stock receipt: {quantity} x {item.name} ({item.sku})",
-            lines=[
-                _Line(item.inventory_account_id, f"Stock in - {item.sku}", amount, 0),
-                _Line(contra_account_id, f"Stock in - {item.sku}", 0, amount),
-            ],
-            reference_number=reference_number,
-        )
-        movement.voucher_id = voucher.id
-        db.flush()
-
     return movement
 
 
@@ -105,7 +86,6 @@ def record_stock_out(
     db: Session, tenant: Tenant, current_user: User, item: Item, warehouse_id: int,
     quantity: float, reference_type: str = "sale",
     reference_number: Optional[str] = None, notes: Optional[str] = None,
-    post_voucher: bool = False, contra_account_id: Optional[int] = None,
     movement_date: Optional[date] = None,
 ) -> StockMovement:
     last = _last_movement(db, tenant.id, item.id, warehouse_id, for_update=True)
@@ -124,35 +104,6 @@ def record_stock_out(
     )
     db.add(movement)
     db.flush()
-
-    if post_voucher:
-        amount = round(quantity * old_avg, 2)
-        if reference_type == "sale" and item.cogs_account_id and item.inventory_account_id:
-            voucher = create_manual_voucher(
-                db, tenant, current_user, voucher_type="journal",
-                voucher_date=movement_date or date.today(),
-                description=f"COGS: {quantity} x {item.name} ({item.sku})",
-                lines=[
-                    _Line(item.cogs_account_id, f"COGS - {item.sku}", amount, 0),
-                    _Line(item.inventory_account_id, f"COGS - {item.sku}", 0, amount),
-                ],
-                reference_number=reference_number,
-            )
-            movement.voucher_id = voucher.id
-            db.flush()
-        elif reference_type in ("adjustment", "damaged") and item.inventory_account_id and contra_account_id:
-            voucher = create_manual_voucher(
-                db, tenant, current_user, voucher_type="journal",
-                voucher_date=movement_date or date.today(),
-                description=f"Stock {reference_type}: {quantity} x {item.name} ({item.sku})",
-                lines=[
-                    _Line(contra_account_id, f"Stock {reference_type} - {item.sku}", amount, 0),
-                    _Line(item.inventory_account_id, f"Stock {reference_type} - {item.sku}", 0, amount),
-                ],
-                reference_number=reference_number,
-            )
-            movement.voucher_id = voucher.id
-            db.flush()
 
     return movement
 
@@ -199,14 +150,3 @@ def record_transfer(
     db.flush()
 
     return out_movement, in_movement
-
-
-class _Line:
-    """Minimal stand-in for the JournalEntryLineCreate objects create_manual_voucher expects."""
-    def __init__(self, account_id, description, debit, credit):
-        self.account_id = account_id
-        self.description = description
-        self.debit = debit
-        self.credit = credit
-        self.cost_center_id = None
-        self.tax_rate_id = None

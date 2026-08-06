@@ -10,6 +10,7 @@ dependencies = [
     "boto3>=1.42.73",
     "email-validator>=2.3.0",
     "fastapi[standard]>=0.138.0",
+    "firebase-admin>=6.5.0",
     "passlib>=1.7.4",
     "psycopg2-binary>=2.9.12",
     "pydantic-settings>=2.14.2",
