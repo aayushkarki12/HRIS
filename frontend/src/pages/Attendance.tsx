@@ -4,22 +4,14 @@ import toast from 'react-hot-toast';
 import {
   Box, Paper, Typography, Button, Card, CardContent,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Chip, Skeleton, Alert, TextField, Divider,
+  Chip, Skeleton, Alert, TextField,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
   Login as LoginIcon,
   Logout as LogoutIcon,
-  Coffee as CoffeeIcon,
-  CoffeeMaker as CoffeeMakerIcon,
-  CheckCircle as CheckCircleIcon,
   MyLocation as MyLocationIcon,
   LocationOn as LocationIcon,
-  Cancel as CancelIcon,
-  Warning as WarningIcon,
-  AccessTime as AccessTimeIcon,
-  HolidayVillage as HolidayIcon,
-  BeachAccess as LeaveIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { attendanceService, getErrorMessage } from '../services/api';
@@ -106,10 +98,7 @@ const Attendance: React.FC = () => {
   };
 
   const clockInMutation = useMutation({
-    mutationFn: () => {
-      if (!location) throw new Error('Get location first');
-      return attendanceService.clockIn(location.lat, location.lng);
-    },
+    mutationFn: () => (location ? attendanceService.clockIn(location.lat, location.lng) : attendanceService.clockIn()),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       queryClient.invalidateQueries({ queryKey: ['attendanceStats'] });
@@ -119,28 +108,13 @@ const Attendance: React.FC = () => {
   });
 
   const clockOutMutation = useMutation({
-    mutationFn: () => {
-      if (!location) throw new Error('Get location first');
-      return attendanceService.clockOut(location.lat, location.lng);
-    },
+    mutationFn: () => (location ? attendanceService.clockOut(location.lat, location.lng) : attendanceService.clockOut()),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       queryClient.invalidateQueries({ queryKey: ['attendanceStats'] });
       toast.success(`Clocked out — ${data.total_hours}h worked`);
     },
     onError: (e: any) => toast.error(getErrorMessage(e, 'Failed to clock out')),
-  });
-
-  const startBreakMutation = useMutation({
-    mutationFn: (breakType: string) => attendanceService.startBreak(breakType),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['attendance'] }); toast.success('Break started'); },
-    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed to start break')),
-  });
-
-  const endBreakMutation = useMutation({
-    mutationFn: attendanceService.endBreak,
-    onSuccess: (data) => { queryClient.invalidateQueries({ queryKey: ['attendance'] }); toast.success(`Break ended — ${data.duration_minutes} min`); },
-    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed to end break')),
   });
 
   const today = (attendance as any[]).find((a: any) => a.date === new Date().toISOString().split('T')[0]);
@@ -190,7 +164,7 @@ const Attendance: React.FC = () => {
       )}
       {!location && (
         <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-          Click "Get Location" to enable location-based attendance tracking.
+          Location is optional - click "Get Location" to tag your clock-in/out with where you are.
         </Alert>
       )}
 
@@ -228,29 +202,13 @@ const Attendance: React.FC = () => {
         <Box sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', bgcolor: '#fff', mb: 3, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
           <Button variant="contained" size="small" startIcon={<LoginIcon />}
             onClick={() => clockInMutation.mutate()}
-            disabled={!!today?.clock_in || clockInMutation.isPending || !location}>
+            disabled={!!today?.clock_in || clockInMutation.isPending}>
             {clockInMutation.isPending ? 'Clocking in…' : 'Clock In'}
           </Button>
           <Button variant="contained" color="error" size="small" startIcon={<LogoutIcon />}
             onClick={() => clockOutMutation.mutate()}
-            disabled={!today?.clock_in || !!today?.clock_out || clockOutMutation.isPending || !location}>
+            disabled={!today?.clock_in || !!today?.clock_out || clockOutMutation.isPending}>
             {clockOutMutation.isPending ? 'Clocking out…' : 'Clock Out'}
-          </Button>
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-          <Button variant="outlined" size="small" startIcon={<CoffeeIcon />}
-            onClick={() => startBreakMutation.mutate('coffee')}
-            disabled={!isClockedIn || startBreakMutation.isPending}>
-            Coffee Break
-          </Button>
-          <Button variant="outlined" size="small" startIcon={<CoffeeMakerIcon />}
-            onClick={() => startBreakMutation.mutate('lunch')}
-            disabled={!isClockedIn || startBreakMutation.isPending}>
-            Lunch Break
-          </Button>
-          <Button variant="outlined" size="small" startIcon={<CheckCircleIcon />}
-            onClick={() => endBreakMutation.mutate()}
-            disabled={!isClockedIn || endBreakMutation.isPending}>
-            End Break
           </Button>
         </Box>
       </motion.div>
@@ -268,7 +226,7 @@ const Attendance: React.FC = () => {
         <Table size="small">
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-              {['Date', 'Clock In', 'Clock Out', 'Hours', 'Status', 'Location', 'Breaks'].map(h => (
+              {['Date', 'Clock In', 'Clock Out', 'Hours', 'Status', 'Location'].map(h => (
                 <TableCell key={h} sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.05em', py: 1.5 }}>
                   {h}
                 </TableCell>
@@ -279,7 +237,7 @@ const Attendance: React.FC = () => {
             {isLoading
               ? Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 7 }).map((_, j) => (
+                  {Array.from({ length: 6 }).map((_, j) => (
                     <TableCell key={j}><Skeleton height={20} /></TableCell>
                   ))}
                 </TableRow>
@@ -299,19 +257,12 @@ const Attendance: React.FC = () => {
                           ? <Chip label={locLabel(record.location_status, record.location_name) ?? record.location_status} color={LOC_COLOR[record.location_status] ?? 'default'} size="small" variant="outlined" />
                           : <Typography variant="caption" color="text.secondary">—</Typography>}
                       </TableCell>
-                      <TableCell>
-                        {record.breaks?.length > 0
-                          ? record.breaks.map((b: any, i: number) => (
-                            <Chip key={i} label={`${b.break_type} ${b.duration?.toFixed(0) ?? 0}m`} size="small" variant="outlined" sx={{ mr: 0.5, mb: 0.25 }} />
-                          ))
-                          : <Typography variant="caption" color="text.secondary">—</Typography>}
-                      </TableCell>
                     </TableRow>
                   );
                 })
                 : (
                   <TableRow>
-                    <TableCell colSpan={7} sx={{ border: 0 }}>
+                    <TableCell colSpan={6} sx={{ border: 0 }}>
                       <EmptyState
                         title="No attendance records"
                         description="Records will appear here once you start clocking in."

@@ -4,14 +4,14 @@ import toast from 'react-hot-toast';
 import {
   Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, CircularProgress, Alert, MenuItem, FormControlLabel, Checkbox,
+  TextField, CircularProgress, Alert, MenuItem,
 } from '@mui/material';
 import {
   ArrowDownward as InIcon, ArrowUpward as OutIcon, SwapHoriz as TransferIcon,
   Inventory2 as InventoryIcon, WarningAmber as WarningIcon, ErrorOutlined as OutOfStockIcon,
   AttachMoney as ValueIcon,
 } from '@mui/icons-material';
-import { inventoryService, accountingService, getErrorMessage } from '../services/api';
+import { inventoryService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AccessDenied from '../components/common/AccessDenied';
 
@@ -41,7 +41,6 @@ const StockLedger: React.FC = () => {
   const { data: movements = [], isLoading } = useQuery({ queryKey: ['stock-movements'], queryFn: () => inventoryService.getMovements({ limit: 100 }), enabled: isManager });
   const { data: items = [] } = useQuery({ queryKey: ['items'], queryFn: () => inventoryService.getItems({ is_active: true }), enabled: isManager });
   const { data: warehouses = [] } = useQuery({ queryKey: ['inventory-setup', 'warehouses'], queryFn: () => inventoryService.getWarehouses({ is_active: true }), enabled: isManager });
-  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => accountingService.getAccounts(), enabled: isManager });
 
   const itemById = (id: number) => items.find((i: any) => i.id === id);
   const warehouseById = (id: number) => warehouses.find((w: any) => w.id === id);
@@ -57,8 +56,8 @@ const StockLedger: React.FC = () => {
       item_id: Number(form.item_id), warehouse_id: Number(form.warehouse_id),
       quantity: Number(form.quantity), unit_cost: Number(form.unit_cost),
       reference_type: 'purchase', reference_number: form.reference_number || null,
-      notes: form.notes || null, post_voucher: !!form.post_voucher,
-    }, form.post_voucher ? Number(form.contra_account_id) : undefined),
+      notes: form.notes || null,
+    }),
     onSuccess: () => { toast.success('Stock received'); invalidate(); closeDialog(); },
     onError: (e: any) => setError(getErrorMessage(e, 'Failed to record stock in')),
   });
@@ -68,8 +67,7 @@ const StockLedger: React.FC = () => {
       item_id: Number(form.item_id), warehouse_id: Number(form.warehouse_id),
       quantity: Number(form.quantity), reference_type: form.reference_type || 'sale',
       reference_number: form.reference_number || null, notes: form.notes || null,
-      post_voucher: !!form.post_voucher,
-    }, form.post_voucher ? Number(form.contra_account_id) : undefined),
+    }),
     onSuccess: () => { toast.success('Stock issued'); invalidate(); closeDialog(); },
     onError: (e: any) => setError(getErrorMessage(e, 'Failed to record stock out')),
   });
@@ -210,15 +208,6 @@ const StockLedger: React.FC = () => {
             <TextField label="Unit Cost" type="number" value={form.unit_cost ?? ''} onChange={(e) => setForm({ ...form, unit_cost: e.target.value })} margin="normal" size="small" />
           </Box>
           <TextField fullWidth label="Reference Number (optional)" value={form.reference_number ?? ''} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} margin="normal" size="small" />
-          <FormControlLabel
-            control={<Checkbox checked={!!form.post_voucher} onChange={(e) => setForm({ ...form, post_voucher: e.target.checked })} />}
-            label="Post accounting voucher"
-          />
-          {form.post_voucher && (
-            <TextField select fullWidth label="Contra Account (e.g. Accounts Payable)" value={form.contra_account_id ?? ''} onChange={(e) => setForm({ ...form, contra_account_id: e.target.value })} margin="normal" size="small">
-              {accounts.filter((a: any) => a.is_active).map((a: any) => <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>)}
-            </TextField>
-          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog}>Cancel</Button>
@@ -246,18 +235,6 @@ const StockLedger: React.FC = () => {
           </TextField>
           <TextField fullWidth label="Quantity" type="number" value={form.quantity ?? ''} onChange={(e) => setForm({ ...form, quantity: e.target.value })} margin="normal" size="small" />
           <TextField fullWidth label="Reference Number (optional)" value={form.reference_number ?? ''} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} margin="normal" size="small" />
-          <FormControlLabel
-            control={<Checkbox checked={!!form.post_voucher} onChange={(e) => setForm({ ...form, post_voucher: e.target.checked })} />}
-            label="Post accounting voucher"
-          />
-          {form.post_voucher && form.reference_type !== 'sale' && (
-            <TextField select fullWidth label="Contra Account" value={form.contra_account_id ?? ''} onChange={(e) => setForm({ ...form, contra_account_id: e.target.value })} margin="normal" size="small">
-              {accounts.filter((a: any) => a.is_active).map((a: any) => <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>)}
-            </TextField>
-          )}
-          {form.post_voucher && form.reference_type === 'sale' && (
-            <Alert severity="info" sx={{ mt: 1 }}>Uses the item's configured COGS and Inventory accounts automatically.</Alert>
-          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog}>Cancel</Button>

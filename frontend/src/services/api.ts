@@ -198,6 +198,11 @@ export const authService = {
     const response = await api.post('/auth/accept-invitation', { token, username, password });
     return response.data;
   },
+
+  verifyPhone: async (token: string, idToken: string) => {
+    const response = await api.post('/auth/verify-phone', { token, id_token: idToken });
+    return response.data;
+  },
 };
 
 // ============ USER SERVICE (admin: role & account management) ============
@@ -531,12 +536,12 @@ export const documentService = {
     return response.data;
   },
 
-  getAll: async () => {
-    const response = await api.get('/documents');
+  getAll: async (employeeId?: number) => {
+    const response = await api.get('/documents', { params: employeeId ? { employee_id: employeeId } : undefined });
     return response.data;
   },
 
-  upload: async (file: File, documentType: string, documentName: string, description?: string) => {
+  upload: async (file: File, documentType: string, documentName: string, description?: string, employeeId?: number) => {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -545,11 +550,17 @@ export const documentService = {
         document_type: documentType,
         document_name: documentName,
         ...(description ? { description } : {}),
+        ...(employeeId ? { employee_id: employeeId } : {}),
       },
       // Unset the instance-level 'application/json' default so the browser can
       // set Content-Type to multipart/form-data with the correct boundary.
       headers: { 'Content-Type': undefined },
     });
+    return response.data;
+  },
+
+  download: async (id: number): Promise<Blob> => {
+    const response = await api.get(`/documents/${id}/download`, { responseType: 'blob' });
     return response.data;
   },
 
@@ -648,18 +659,6 @@ export const attendanceService = {
     return response.data;
   },
 
-  startBreak: async (breakType: string) => {
-    const response = await api.post('/attendance/break/start', null, {
-      params: { break_type: breakType },
-    });
-    return response.data;
-  },
-
-  endBreak: async () => {
-    const response = await api.post('/attendance/break/end');
-    return response.data;
-  },
-
   getStats: async () => {
     const response = await api.get('/attendance/stats');
     return response.data;
@@ -740,367 +739,6 @@ export const timesheetService = {
   },
 };
 
-// ============ ACCOUNTING SERVICE ============
-export const accountingService = {
-  getAccounts: async (params?: { account_type?: string; search?: string; is_active?: boolean }) => {
-    const response = await api.get('/accounting/accounts', { params });
-    return response.data;
-  },
-
-  getAccountTree: async () => {
-    const response = await api.get('/accounting/accounts/tree');
-    return response.data;
-  },
-
-  getAccountTypes: async () => {
-    const response = await api.get('/accounting/accounts/types');
-    return response.data;
-  },
-
-  getAccountById: async (id: number) => {
-    const response = await api.get(`/accounting/accounts/${id}`);
-    return response.data;
-  },
-
-  createAccount: async (data: any) => {
-    const response = await api.post('/accounting/accounts', data);
-    return response.data;
-  },
-
-  updateAccount: async (id: number, data: any) => {
-    const response = await api.put(`/accounting/accounts/${id}`, data);
-    return response.data;
-  },
-
-  deleteAccount: async (id: number) => {
-    const response = await api.delete(`/accounting/accounts/${id}`);
-    return response.data;
-  },
-
-  // Journal Entries
-  getJournalEntries: async (params?: { status?: string; reference_type?: string; start_date?: string; end_date?: string }) => {
-    const response = await api.get('/accounting/journal-entries', { params });
-    return response.data;
-  },
-
-  getJournalEntryById: async (id: number) => {
-    const response = await api.get(`/accounting/journal-entries/${id}`);
-    return response.data;
-  },
-
-  createJournalEntry: async (data: any) => {
-    const response = await api.post('/accounting/journal-entries', data);
-    return response.data;
-  },
-
-  updateJournalEntry: async (id: number, data: any) => {
-    const response = await api.put(`/accounting/journal-entries/${id}`, data);
-    return response.data;
-  },
-
-  postJournalEntry: async (id: number) => {
-    const response = await api.put(`/accounting/journal-entries/${id}/post`);
-    return response.data;
-  },
-
-  deleteJournalEntry: async (id: number) => {
-    const response = await api.delete(`/accounting/journal-entries/${id}`);
-    return response.data;
-  },
-
-  // General Ledger
-  getLedger: async (params?: { start_date?: string; end_date?: string; account_id?: number; account_type?: string }) => {
-    const response = await api.get('/accounting/ledger', { params });
-    return response.data;
-  },
-
-  getLedgerSummary: async (params?: { start_date?: string; end_date?: string }) => {
-    const response = await api.get('/accounting/ledger/summary', { params });
-    return response.data;
-  },
-
-  // Financial Reports
-  getTrialBalance: async (params?: { start_date?: string; end_date?: string }) => {
-    const response = await api.get('/accounting/reports/trial-balance', { params });
-    return response.data;
-  },
-
-  getIncomeStatement: async (params?: { start_date?: string; end_date?: string }) => {
-    const response = await api.get('/accounting/reports/income-statement', { params });
-    return response.data;
-  },
-
-  getBalanceSheet: async (params?: { end_date?: string }) => {
-    const response = await api.get('/accounting/reports/balance-sheet', { params });
-    return response.data;
-  },
-
-  getCashFlow: async (params?: { start_date?: string; end_date?: string }) => {
-    const response = await api.get('/accounting/reports/cash-flow', { params });
-    return response.data;
-  },
-
-  getRatioAnalysis: async (params?: { end_date?: string }) => {
-    const response = await api.get('/accounting/reports/ratio-analysis', { params });
-    return response.data;
-  },
-
-  getTaxSummary: async (params?: { start_date?: string; end_date?: string }) => {
-    const response = await api.get('/accounting/reports/tax-summary', { params });
-    return response.data;
-  },
-
-  getReceivablesAging: async () => {
-    const response = await api.get('/accounting/reports/receivables');
-    return response.data;
-  },
-
-  getPayablesAging: async () => {
-    const response = await api.get('/accounting/reports/payables');
-    return response.data;
-  },
-
-  // Cost Centers
-  getCostCenters: async (params?: { is_active?: boolean }) => {
-    const response = await api.get('/accounting/cost-centers', { params });
-    return response.data;
-  },
-
-  createCostCenter: async (data: any) => {
-    const response = await api.post('/accounting/cost-centers', data);
-    return response.data;
-  },
-
-  updateCostCenter: async (id: number, data: any) => {
-    const response = await api.put(`/accounting/cost-centers/${id}`, data);
-    return response.data;
-  },
-
-  deactivateCostCenter: async (id: number) => {
-    const response = await api.delete(`/accounting/cost-centers/${id}`);
-    return response.data;
-  },
-
-  getCostCenterSpend: async (id: number, params?: { start_date?: string; end_date?: string }) => {
-    const response = await api.get(`/accounting/cost-centers/${id}/spend`, { params });
-    return response.data;
-  },
-
-  // Ledger Groups
-  getLedgerGroupTree: async (params?: { start_date?: string; end_date?: string }) => {
-    const response = await api.get('/accounting/ledger-groups/tree', { params });
-    return response.data;
-  },
-
-  getLedgerGroups: async (params?: { is_active?: boolean; search?: string }) => {
-    const response = await api.get('/accounting/ledger-groups', { params });
-    return response.data;
-  },
-
-  createLedgerGroup: async (data: any) => {
-    const response = await api.post('/accounting/ledger-groups', data);
-    return response.data;
-  },
-
-  updateLedgerGroup: async (id: number, data: any) => {
-    const response = await api.put(`/accounting/ledger-groups/${id}`, data);
-    return response.data;
-  },
-
-  deleteLedgerGroup: async (id: number) => {
-    const response = await api.delete(`/accounting/ledger-groups/${id}`);
-    return response.data;
-  },
-
-  // Tax Rates
-  getTaxRates: async (params?: { is_active?: boolean }) => {
-    const response = await api.get('/accounting/tax-rates', { params });
-    return response.data;
-  },
-
-  createTaxRate: async (data: any) => {
-    const response = await api.post('/accounting/tax-rates', data);
-    return response.data;
-  },
-
-  updateTaxRate: async (id: number, data: any) => {
-    const response = await api.put(`/accounting/tax-rates/${id}`, data);
-    return response.data;
-  },
-
-  deactivateTaxRate: async (id: number) => {
-    const response = await api.delete(`/accounting/tax-rates/${id}`);
-    return response.data;
-  },
-
-  // Bank Reconciliation
-  getReconciliationStatus: async (accountId: number) => {
-    const response = await api.get(`/accounting/reconciliation/${accountId}`);
-    return response.data;
-  },
-
-  reconcileAccount: async (accountId: number, data: { line_ids: number[]; statement_date: string; statement_balance: number; notes?: string }) => {
-    const response = await api.post(`/accounting/reconciliation/${accountId}`, data);
-    return response.data;
-  },
-
-  getReconciliationHistory: async (accountId: number) => {
-    const response = await api.get(`/accounting/reconciliation/${accountId}/history`);
-    return response.data;
-  },
-};
-
-// ============ PAYROLL SERVICE ============
-export const payrollService = {
-  getSalaryStructures: async (employeeId?: number) => {
-    const response = await api.get('/payroll/salary-structures', {
-      params: employeeId ? { employee_id: employeeId } : undefined,
-    });
-    return response.data;
-  },
-
-  createSalaryStructure: async (data: any) => {
-    const response = await api.post('/payroll/salary-structures', data);
-    return response.data;
-  },
-
-  updateSalaryStructure: async (id: number, data: any) => {
-    const response = await api.put(`/payroll/salary-structures/${id}`, data);
-    return response.data;
-  },
-
-  getPayrollRuns: async () => {
-    const response = await api.get('/payroll/runs');
-    return response.data;
-  },
-
-  getPayrollRun: async (id: number) => {
-    const response = await api.get(`/payroll/runs/${id}`);
-    return response.data;
-  },
-
-  createPayrollRun: async (data: any) => {
-    const response = await api.post('/payroll/runs', data);
-    return response.data;
-  },
-
-  processPayrollRun: async (id: number) => {
-    const response = await api.put(`/payroll/runs/${id}/process`);
-    return response.data;
-  },
-
-  deletePayrollRun: async (id: number) => {
-    const response = await api.delete(`/payroll/runs/${id}`);
-    return response.data;
-  },
-
-  getMyPayslips: async () => {
-    const response = await api.get('/payroll/my-payslips');
-    return response.data;
-  },
-};
-
-// ============ EXPENSE SERVICE ============
-export const expenseService = {
-  getAll: async (params?: { status?: string }) => {
-    const response = await api.get('/expenses', { params });
-    return response.data;
-  },
-
-  getMyExpenses: async () => {
-    const response = await api.get('/expenses/my');
-    return response.data;
-  },
-
-  getPending: async () => {
-    const response = await api.get('/expenses/pending');
-    return response.data;
-  },
-
-  getById: async (id: number) => {
-    const response = await api.get(`/expenses/${id}`);
-    return response.data;
-  },
-
-  create: async (data: any) => {
-    const response = await api.post('/expenses', data);
-    return response.data;
-  },
-
-  submit: async (id: number) => {
-    const response = await api.put(`/expenses/${id}/submit`);
-    return response.data;
-  },
-
-  managerApprove: async (id: number) => {
-    const response = await api.put(`/expenses/${id}/manager-approve`);
-    return response.data;
-  },
-
-  accountingApprove: async (id: number) => {
-    const response = await api.put(`/expenses/${id}/accounting-approve`);
-    return response.data;
-  },
-
-  pay: async (id: number) => {
-    const response = await api.put(`/expenses/${id}/pay`);
-    return response.data;
-  },
-
-  reject: async (id: number, reason?: string) => {
-    const response = await api.put(`/expenses/${id}/reject`, null, { params: { reason } });
-    return response.data;
-  },
-
-  delete: async (id: number) => {
-    const response = await api.delete(`/expenses/${id}`);
-    return response.data;
-  },
-};
-
-// ============ INVOICE SERVICE ============
-export const invoiceService = {
-  getAll: async (params?: { status?: string }) => {
-    const response = await api.get('/invoices', { params });
-    return response.data;
-  },
-
-  getStats: async () => {
-    const response = await api.get('/invoices/stats');
-    return response.data;
-  },
-
-  getById: async (id: number) => {
-    const response = await api.get(`/invoices/${id}`);
-    return response.data;
-  },
-
-  create: async (data: any) => {
-    const response = await api.post('/invoices', data);
-    return response.data;
-  },
-
-  send: async (id: number) => {
-    const response = await api.put(`/invoices/${id}/send`);
-    return response.data;
-  },
-
-  recordPayment: async (id: number, data: any) => {
-    const response = await api.post(`/invoices/${id}/payments`, data);
-    return response.data;
-  },
-
-  cancel: async (id: number) => {
-    const response = await api.put(`/invoices/${id}/cancel`);
-    return response.data;
-  },
-
-  delete: async (id: number) => {
-    const response = await api.delete(`/invoices/${id}`);
-    return response.data;
-  },
-};
-
 // ============ AUDIT LOG SERVICE ============
 export const auditLogService = {
   getRecent: async (limit = 10) => {
@@ -1127,54 +765,6 @@ export const auditLogService = {
     module?: string; start_date?: string; end_date?: string;
   }) => {
     const response = await api.get('/audit-logs/export', { params, responseType: 'blob' });
-    return response.data;
-  },
-};
-
-// ============ VOUCHER SERVICE ============
-export const voucherService = {
-  getAll: async (params?: { voucher_type?: string; status?: string; skip?: number; limit?: number }) => {
-    const response = await api.get('/vouchers', { params });
-    return response.data;
-  },
-
-  getById: async (id: number) => {
-    const response = await api.get(`/vouchers/${id}`);
-    return response.data;
-  },
-
-  create: async (data: any) => {
-    const response = await api.post('/vouchers', data);
-    return response.data;
-  },
-
-  submit: async (id: number) => {
-    const response = await api.put(`/vouchers/${id}/submit`);
-    return response.data;
-  },
-
-  approve: async (id: number) => {
-    const response = await api.put(`/vouchers/${id}/approve`);
-    return response.data;
-  },
-
-  reject: async (id: number, remarks?: string) => {
-    const response = await api.put(`/vouchers/${id}/reject`, { remarks });
-    return response.data;
-  },
-
-  cancel: async (id: number, remarks?: string) => {
-    const response = await api.put(`/vouchers/${id}/cancel`, { remarks });
-    return response.data;
-  },
-
-  post: async (id: number) => {
-    const response = await api.put(`/vouchers/${id}/post`);
-    return response.data;
-  },
-
-  delete: async (id: number) => {
-    const response = await api.delete(`/vouchers/${id}`);
     return response.data;
   },
 };
@@ -1307,12 +897,12 @@ export const inventoryService = {
     const response = await api.get('/inventory/movements', { params });
     return response.data;
   },
-  stockIn: async (data: any, contra_account_id?: number) => {
-    const response = await api.post('/inventory/movements/stock-in', data, { params: { contra_account_id } });
+  stockIn: async (data: any) => {
+    const response = await api.post('/inventory/movements/stock-in', data);
     return response.data;
   },
-  stockOut: async (data: any, contra_account_id?: number) => {
-    const response = await api.post('/inventory/movements/stock-out', data, { params: { contra_account_id } });
+  stockOut: async (data: any) => {
+    const response = await api.post('/inventory/movements/stock-out', data);
     return response.data;
   },
   transfer: async (data: any) => {
@@ -1323,49 +913,6 @@ export const inventoryService = {
   // Dashboard
   getDashboard: async () => {
     const response = await api.get('/inventory/dashboard');
-    return response.data;
-  },
-};
-
-export const budgetService = {
-  getBudgets: async (params?: { fiscal_year?: number; scope_type?: string; status?: string }) => {
-    const response = await api.get('/budgets', { params });
-    return response.data;
-  },
-  getBudget: async (id: number) => {
-    const response = await api.get(`/budgets/${id}`);
-    return response.data;
-  },
-  createBudget: async (data: any) => {
-    const response = await api.post('/budgets', data);
-    return response.data;
-  },
-  updateBudget: async (id: number, data: any) => {
-    const response = await api.put(`/budgets/${id}`, data);
-    return response.data;
-  },
-  deleteBudget: async (id: number) => {
-    const response = await api.delete(`/budgets/${id}`);
-    return response.data;
-  },
-  submitBudget: async (id: number) => {
-    const response = await api.put(`/budgets/${id}/submit`);
-    return response.data;
-  },
-  approveBudget: async (id: number) => {
-    const response = await api.put(`/budgets/${id}/approve`);
-    return response.data;
-  },
-  rejectBudget: async (id: number, remarks?: string) => {
-    const response = await api.put(`/budgets/${id}/reject`, { remarks });
-    return response.data;
-  },
-  getVariance: async (id: number) => {
-    const response = await api.get(`/budgets/${id}/variance`);
-    return response.data;
-  },
-  getDashboard: async (fiscal_year?: number) => {
-    const response = await api.get('/budgets/reports/dashboard', { params: { fiscal_year } });
     return response.data;
   },
 };

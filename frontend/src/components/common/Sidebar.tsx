@@ -25,32 +25,17 @@ import {
   Logout as LogoutIcon,
   Close as CloseIcon,
   Settings as SettingsIcon,
-  Description as DocumentIcon,
   EventNote as LeaveIcon,
   AccessTime as AttendanceIcon,
   Schedule as TimesheetIcon,
-  AccountBalance as AccountingIcon,
   ManageAccounts as UsersIcon,
   AdminPanelSettings as RolesIcon,
   ExpandLess,
   ExpandMore,
   Assignment as AssignmentIcon,
   Storage as ResourceIcon,
-  AccountTree as ChartIcon,
-  Book as JournalIcon,
-  ListAlt as LedgerIcon,
-  Payments as PayrollIcon,
-  Receipt as ExpenseIcon,
-  RequestPage as InvoiceIcon,
-  BarChart as ReportIcon,
-  Insights as InsightsIcon,
-  ReceiptLong as VouchersIcon,
   FactCheckOutlined as AuditTrailIcon,
-  PieChartOutlined as CostCenterIcon,
-  CategoryOutlined as FolderTreeIcon,
-  AccountBalanceWallet as ReconcileIcon,
   Inventory2 as InventoryIcon,
-  AccountBalanceWallet as BudgetIcon,
   SwapVert as StockLedgerIcon,
   Widgets as ItemsIcon,
   TuneOutlined as InventorySetupIcon,
@@ -82,7 +67,6 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
 
   const [openHR, setOpenHR] = useState(true);
   const [openProjects, setOpenProjects] = useState(true);
-  const [openAccounting, setOpenAccounting] = useState(true);
   const [openInventory, setOpenInventory] = useState(true);
 
   const handleNavigation = (path: string) => {
@@ -236,16 +220,6 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
               </ListItem>
               <ListItem disablePadding>
                 <ListItemButton
-                  onClick={() => handleNavigation('/documents')}
-                  selected={isSelected('/documents')}
-                  sx={subItemSx}
-                >
-                  <ListItemIcon><DocumentIcon /></ListItemIcon>
-                  <ListItemText primary="Documents" />
-                </ListItemButton>
-              </ListItem>
-              <ListItem disablePadding>
-                <ListItemButton
                   onClick={() => handleNavigation('/leaves')}
                   selected={isSelected('/leaves')}
                   sx={subItemSx}
@@ -326,152 +300,6 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
           </Collapse>
         </List>
 
-        {/* Accounting */}
-        <Typography variant="overline" sx={sectionLabelSx} display="block" color="text.disabled">
-          Finance
-        </Typography>
-        <List disablePadding>
-          <ListItem disablePadding>
-            <ListItemButton onClick={() => setOpenAccounting(!openAccounting)} sx={topItemSx}>
-              <ListItemIcon><AccountingIcon sx={{ fontSize: 18 }} /></ListItemIcon>
-              <ListItemText primary="Accounting" />
-              {openAccounting ? <ExpandLess sx={{ fontSize: 16, color: 'text.disabled' }} /> : <ExpandMore sx={{ fontSize: 16, color: 'text.disabled' }} />}
-            </ListItemButton>
-          </ListItem>
-          <Collapse in={openAccounting} timeout="auto" unmountOnExit>
-            <List component="div" disablePadding sx={{ pl: 2, mt: 0.25 }}>
-              {isManager && (
-                <>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/accounting-dashboard')}
-                      selected={isSelected('/accounting-dashboard')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><InsightsIcon /></ListItemIcon>
-                      <ListItemText primary="Overview" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/chart-of-accounts')}
-                      selected={isSelected('/chart-of-accounts')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><ChartIcon /></ListItemIcon>
-                      <ListItemText primary="Chart of Accounts" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/ledger-groups')}
-                      selected={isSelected('/ledger-groups')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><FolderTreeIcon /></ListItemIcon>
-                      <ListItemText primary="Ledger Groups" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/vouchers')}
-                      selected={isSelected('/vouchers')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><VouchersIcon /></ListItemIcon>
-                      <ListItemText primary="Vouchers" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/journal-entries')}
-                      selected={isSelected('/journal-entries')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><JournalIcon /></ListItemIcon>
-                      <ListItemText primary="Journal Entries" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/general-ledger')}
-                      selected={isSelected('/general-ledger')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><LedgerIcon /></ListItemIcon>
-                      <ListItemText primary="General Ledger" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/cost-centers')}
-                      selected={isSelected('/cost-centers')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><CostCenterIcon /></ListItemIcon>
-                      <ListItemText primary="Cost Centers & Tax" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/bank-reconciliation')}
-                      selected={isSelected('/bank-reconciliation')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><ReconcileIcon /></ListItemIcon>
-                      <ListItemText primary="Bank Reconciliation" />
-                    </ListItemButton>
-                  </ListItem>
-                </>
-              )}
-              <ListItem disablePadding>
-                <ListItemButton
-                  onClick={() => handleNavigation('/payroll')}
-                  selected={isSelected('/payroll')}
-                  sx={subItemSx}
-                >
-                  <ListItemIcon><PayrollIcon /></ListItemIcon>
-                  <ListItemText primary="Payroll" />
-                </ListItemButton>
-              </ListItem>
-              <ListItem disablePadding>
-                <ListItemButton
-                  onClick={() => handleNavigation('/expense-claims')}
-                  selected={isSelected('/expense-claims')}
-                  sx={subItemSx}
-                >
-                  <ListItemIcon><ExpenseIcon /></ListItemIcon>
-                  <ListItemText primary="Expense Claims" />
-                </ListItemButton>
-              </ListItem>
-              {isManager && (
-                <>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/invoices')}
-                      selected={isSelected('/invoices')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><InvoiceIcon /></ListItemIcon>
-                      <ListItemText primary="Invoices" />
-                    </ListItemButton>
-                  </ListItem>
-                  <ListItem disablePadding>
-                    <ListItemButton
-                      onClick={() => handleNavigation('/financial-reports')}
-                      selected={isSelected('/financial-reports')}
-                      sx={subItemSx}
-                    >
-                      <ListItemIcon><ReportIcon /></ListItemIcon>
-                      <ListItemText primary="Reports" />
-                    </ListItemButton>
-                  </ListItem>
-                </>
-              )}
-            </List>
-          </Collapse>
-        </List>
-
         {/* Inventory */}
         {isManager && (
           <>
@@ -508,23 +336,6 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
                 </ListItem>
               </List>
             </Collapse>
-          </List>
-          </>
-        )}
-
-        {/* Budgets */}
-        {isManager && (
-          <>
-          <Typography variant="overline" sx={sectionLabelSx} display="block" color="text.disabled">
-            Planning
-          </Typography>
-          <List disablePadding>
-            <ListItem disablePadding>
-              <ListItemButton onClick={() => handleNavigation('/budgets')} selected={isSelected('/budgets')} sx={topItemSx}>
-                <ListItemIcon><BudgetIcon sx={{ fontSize: 18 }} /></ListItemIcon>
-                <ListItemText primary="Budgets" />
-              </ListItemButton>
-            </ListItem>
           </List>
           </>
         )}
