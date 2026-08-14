@@ -66,7 +66,7 @@ const Assignments: React.FC = () => {
 
   const { data: employees } = useQuery({
     queryKey: ['employees'],
-    queryFn: employeeService.getAll,
+    queryFn: () => employeeService.getAll(),
     enabled: isAdmin,
   });
 
@@ -219,13 +219,14 @@ const Assignments: React.FC = () => {
       </Box>
 
       <TableContainer component={Paper}>
-        <Table>
+        <Table sx={{ minWidth: 650 }}>
           <TableHead>
-            <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+            <TableRow sx={{ backgroundColor: '#F1F5F9' }}>
               {isAdmin && <TableCell><strong>Employee</strong></TableCell>}
               <TableCell><strong>Resource</strong></TableCell>
               <TableCell><strong>Project</strong></TableCell>
               <TableCell><strong>Assigned Date</strong></TableCell>
+              <TableCell><strong>Return Date</strong></TableCell>
               <TableCell><strong>Status</strong></TableCell>
               {isAdmin && <TableCell align="right"><strong>Actions</strong></TableCell>}
             </TableRow>
@@ -251,8 +252,11 @@ const Assignments: React.FC = () => {
                       assignment.project?.name ?? '-'
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell title={assignment.assigned_at ? new Date(assignment.assigned_at).toLocaleString() : undefined}>
                     {assignment.assigned_date ? new Date(assignment.assigned_date).toLocaleDateString() : '-'}
+                  </TableCell>
+                  <TableCell title={assignment.returned_at ? new Date(assignment.returned_at).toLocaleString() : undefined}>
+                    {assignment.return_date ? new Date(assignment.return_date).toLocaleDateString() : '-'}
                   </TableCell>
                   <TableCell>
                     <Chip
@@ -287,7 +291,7 @@ const Assignments: React.FC = () => {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 6 : 4} align="center">
+                <TableCell colSpan={isAdmin ? 7 : 5} align="center">
                   <Typography variant="body2" color="textSecondary" sx={{ py: 4 }}>
                     {isAdmin ? 'No assignments found' : 'No resources assigned to you yet'}
                   </Typography>
@@ -394,7 +398,7 @@ const Assignments: React.FC = () => {
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseModal}>Cancel</Button>
+            <Button onClick={handleCloseModal} color="inherit">Cancel</Button>
             <Button type="submit" variant="contained" disabled={isSubmitting}>
               {isSubmitting ? 'Assigning...' : 'Assign'}
             </Button>

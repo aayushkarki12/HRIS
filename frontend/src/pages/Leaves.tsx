@@ -35,9 +35,10 @@ import {
   Pending as PendingIcon,
   Cancel as CancelIcon,
   EventBusy as RejectIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
-import { leaveService, getErrorMessage } from '../services/api';
+import { leaveService, employeeService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const fadeUp = {
@@ -69,8 +70,11 @@ const Leaves: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [rejectTarget, setRejectTarget] = useState<{ id: number; name: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [editBalance, setEditBalance] = useState<any | null>(null);
+  const [balanceForm, setBalanceForm] = useState({ total_days: '', used_days: '', carried_over: '' });
 
   const [formData, setFormData] = useState({
+    employee_id: '',
     leave_type_id: '',
     start_date: '',
     end_date: '',
@@ -89,6 +93,17 @@ const Leaves: React.FC = () => {
     queryFn: leaveService.getBalance,
     retry: (failCount, err: any) => err?.response?.status !== 404 && failCount < 2,
   });
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeeService.getAll(),
+    enabled: isAdmin,
+  });
+  const { data: allBalancesData, isLoading: allBalancesLoading } = useQuery({
+    queryKey: ['leaveBalances', 'all'],
+    queryFn: () => leaveService.getAllBalances(),
+    enabled: isAdmin,
+  });
+  const allBalances = allBalancesData?.balances ?? [];
 
   const calcBalancesMutation = useMutation({
     mutationFn: () => leaveService.calculateBalances(new Date().getFullYear()),
@@ -100,13 +115,17 @@ const Leaves: React.FC = () => {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => leaveService.create(formData),
+    mutationFn: () => leaveService.create({
+      ...formData,
+      employee_id: formData.employee_id ? Number(formData.employee_id) : undefined,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['pendingLeaves'] });
       queryClient.invalidateQueries({ queryKey: ['leaveBalances'] });
-      toast.success('Leave request submitted');
+      toast.success(formData.employee_id ? 'Leave request logged' : 'Leave request submitted');
       setIsModalOpen(false);
-      setFormData({ leave_type_id: '', start_date: '', end_date: '', reason: '' });
+      setFormData({ employee_id: '', leave_type_id: '', start_date: '', end_date: '', reason: '' });
       setError('');
     },
     onError: (err: any) => {
@@ -114,6 +133,20 @@ const Leaves: React.FC = () => {
       toast.error(msg);
       setError(msg);
     },
+  });
+
+  const updateBalanceMutation = useMutation({
+    mutationFn: () => leaveService.updateBalance(editBalance.id, {
+      total_days: balanceForm.total_days === '' ? undefined : Number(balanceForm.total_days),
+      used_days: balanceForm.used_days === '' ? undefined : Number(balanceForm.used_days),
+      carried_over: balanceForm.carried_over === '' ? undefined : Number(balanceForm.carried_over),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leaveBalances'] });
+      toast.success('Leave balance updated');
+      setEditBalance(null);
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to update leave balance')),
   });
 
   const approveMutation = useMutation({
@@ -172,7 +205,7 @@ const Leaves: React.FC = () => {
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+            <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>
               Leave Management
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
@@ -281,7 +314,7 @@ const Leaves: React.FC = () => {
             </Box>
             <Paper sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, boxShadow: 'none', overflow: 'hidden' }}>
               <TableContainer>
-                <Table size="small">
+                <Table sx={{ minWidth: 500 }} size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell>Employee</TableCell>
@@ -345,6 +378,86 @@ const Leaves: React.FC = () => {
           </Box>
         )}
 
+        {/* All Leave Balances — admin only, lets an admin correct or grant/deduct
+            days for any employee. Editing here doesn't touch total_days/used_days
+            permanently - running "Calculate Now" again resets those from the
+            formula, only carried_over survives (see backend docstring). */}
+        {isAdmin && (
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="overline" color="text.disabled" sx={{ letterSpacing: '0.08em', mb: 1.5, display: 'block' }}>
+              All Leave Balances
+            </Typography>
+            <Paper sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, boxShadow: 'none', overflow: 'hidden' }}>
+              <TableContainer sx={{ maxHeight: 360 }}>
+                <Table sx={{ minWidth: 650 }} size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Employee</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Total</TableCell>
+                      <TableCell>Used</TableCell>
+                      <TableCell>Remaining</TableCell>
+                      <TableCell>Carried Over</TableCell>
+                      <TableCell align="right">Action</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {allBalancesLoading
+                      ? Array.from({ length: 3 }).map((_, i) => (
+                          <TableRow key={i}>
+                            {Array.from({ length: 7 }).map((_, j) => (
+                              <TableCell key={j}><Skeleton height={18} /></TableCell>
+                            ))}
+                          </TableRow>
+                        ))
+                      : allBalances.length > 0
+                      ? allBalances.map((b: any) => (
+                          <TableRow key={b.id} hover>
+                            <TableCell>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>{b.employee_name}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">{b.leave_type_name}</Typography>
+                            </TableCell>
+                            <TableCell>{b.total_days}</TableCell>
+                            <TableCell>{b.used_days}</TableCell>
+                            <TableCell>{b.remaining_days}</TableCell>
+                            <TableCell>{b.carried_over}</TableCell>
+                            <TableCell align="right">
+                              <Tooltip title="Edit balance">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => {
+                                    setEditBalance(b);
+                                    setBalanceForm({
+                                      total_days: String(b.total_days),
+                                      used_days: String(b.used_days),
+                                      carried_over: String(b.carried_over),
+                                    });
+                                  }}
+                                >
+                                  <EditIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      : (
+                        <TableRow>
+                          <TableCell colSpan={7} sx={{ py: 4, textAlign: 'center' }}>
+                            <Typography variant="body2" color="text.disabled">
+                              No balances yet for {new Date().getFullYear()}. Use "Calculate Now" above once balances exist, or add employees.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </Box>
+        )}
+
         {/* My Leave History */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="overline" color="text.disabled" sx={{ letterSpacing: '0.08em' }}>
@@ -367,7 +480,7 @@ const Leaves: React.FC = () => {
 
         <Paper sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, boxShadow: 'none', overflow: 'hidden' }}>
           <TableContainer>
-            <Table size="small" stickyHeader>
+            <Table sx={{ minWidth: 600 }} size="small" stickyHeader>
               <TableHead>
                 <TableRow>
                   <TableCell>Type</TableCell>
@@ -439,9 +552,27 @@ const Leaves: React.FC = () => {
 
         {/* Request Leave dialog */}
         <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ pb: 1 }}>Request Leave</DialogTitle>
+          <DialogTitle sx={{ pb: 1 }}>{formData.employee_id ? 'Log Leave For Employee' : 'Request Leave'}</DialogTitle>
           <DialogContent sx={{ pt: 1 }}>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            {isAdmin && (
+              <TextField
+                fullWidth select
+                label="Employee"
+                value={formData.employee_id}
+                onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
+                margin="normal"
+                size="small"
+                helperText="Leave blank to request for yourself"
+              >
+                <MenuItem value="">Myself</MenuItem>
+                {(employees as any[]).map((emp: any) => (
+                  <MenuItem key={emp.id} value={emp.id}>
+                    {emp.first_name} {emp.last_name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
             <TextField
               fullWidth select
               label="Leave Type"
@@ -527,6 +658,48 @@ const Leaves: React.FC = () => {
               onClick={() => rejectTarget && rejectMutation.mutate({ id: rejectTarget.id, reason: rejectReason || undefined })}
             >
               {rejectMutation.isPending ? 'Rejecting…' : 'Reject'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Edit leave balance dialog — admin only */}
+        <Dialog open={!!editBalance} onClose={() => setEditBalance(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ pb: 1 }}>Edit Leave Balance</DialogTitle>
+          <DialogContent sx={{ pt: 1 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {editBalance?.employee_name} · {editBalance?.leave_type_name}
+            </Typography>
+            <TextField
+              fullWidth label="Total Days" type="number"
+              value={balanceForm.total_days}
+              onChange={(e) => setBalanceForm({ ...balanceForm, total_days: e.target.value })}
+              margin="normal" size="small"
+              slotProps={{ htmlInput: { min: 0, step: 0.5 } }}
+            />
+            <TextField
+              fullWidth label="Used Days" type="number"
+              value={balanceForm.used_days}
+              onChange={(e) => setBalanceForm({ ...balanceForm, used_days: e.target.value })}
+              margin="normal" size="small"
+              slotProps={{ htmlInput: { min: 0, step: 0.5 } }}
+            />
+            <TextField
+              fullWidth label="Carried Over" type="number"
+              value={balanceForm.carried_over}
+              onChange={(e) => setBalanceForm({ ...balanceForm, carried_over: e.target.value })}
+              margin="normal" size="small"
+              helperText="Survives the next balance recalculation, unlike Total/Used above"
+              slotProps={{ htmlInput: { step: 0.5 } }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setEditBalance(null)} color="inherit">Cancel</Button>
+            <Button
+              variant="contained"
+              disabled={updateBalanceMutation.isPending}
+              onClick={() => updateBalanceMutation.mutate()}
+            >
+              {updateBalanceMutation.isPending ? 'Saving…' : 'Save'}
             </Button>
           </DialogActions>
         </Dialog>

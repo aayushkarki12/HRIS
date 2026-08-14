@@ -5,7 +5,7 @@ import {
   Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Chip, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, CircularProgress, Alert, IconButton, Tabs, Tab,
-  Checkbox, FormControlLabel, FormGroup, Divider,
+  Checkbox, FormControlLabel, FormGroup, Divider, ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
@@ -55,16 +55,16 @@ const RolesPermissions: React.FC = () => {
   // ---------- Role dialog ----------
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [roleEditing, setRoleEditing] = useState<any>(null);
-  const [roleForm, setRoleForm] = useState<{ name: string; description: string; permission_keys: string[] }>({
-    name: '', description: '', permission_keys: [],
+  const [roleForm, setRoleForm] = useState<{ name: string; description: string; permission_keys: string[]; scope: 'tenant' | 'site' }>({
+    name: '', description: '', permission_keys: [], scope: 'tenant',
   });
   const [roleError, setRoleError] = useState('');
 
   const openRoleModal = (role?: any) => {
     setRoleEditing(role ?? null);
     setRoleForm(role
-      ? { name: role.name, description: role.description ?? '', permission_keys: [...role.permission_keys] }
-      : { name: '', description: '', permission_keys: [] });
+      ? { name: role.name, description: role.description ?? '', permission_keys: [...role.permission_keys], scope: role.scope ?? 'tenant' }
+      : { name: '', description: '', permission_keys: [], scope: 'tenant' });
     setRoleError('');
     setRoleModalOpen(true);
   };
@@ -116,6 +116,7 @@ const RolesPermissions: React.FC = () => {
       name: roleForm.name,
       description: roleForm.description || undefined,
       permission_keys: roleForm.permission_keys,
+      scope: roleForm.scope,
     });
   };
 
@@ -211,7 +212,7 @@ const RolesPermissions: React.FC = () => {
   return (
     <Box>
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, color: '#2c3e50' }}>Roles & Permissions</Typography>
+        <Typography variant="h4" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, color: '#0F172A' }}>Roles & Permissions</Typography>
         <Typography variant="body2" color="textSecondary">
           Manage designations, their permission matrix, seniority levels, and departments
         </Typography>
@@ -231,9 +232,9 @@ const RolesPermissions: React.FC = () => {
           </Button>
         </Box>
         <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-          <Table>
+          <Table sx={{ minWidth: 600 }}>
             <TableHead>
-              <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+              <TableRow sx={{ backgroundColor: '#F1F5F9' }}>
                 <TableCell><strong>Name</strong></TableCell>
                 <TableCell><strong>Description</strong></TableCell>
                 <TableCell><strong>Type</strong></TableCell>
@@ -248,7 +249,10 @@ const RolesPermissions: React.FC = () => {
                   <TableCell sx={{ fontWeight: 600 }}>{role.name}</TableCell>
                   <TableCell>{role.description || '-'}</TableCell>
                   <TableCell>
-                    <Chip label={role.is_system ? 'System' : 'Custom'} size="small" color={role.is_system ? 'default' : 'primary'} variant={role.is_system ? 'outlined' : 'filled'} />
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      <Chip label={role.is_system ? 'System' : 'Custom'} size="small" color={role.is_system ? 'default' : 'primary'} variant={role.is_system ? 'outlined' : 'filled'} />
+                      {role.scope === 'site' && <Chip label="Site-scoped" size="small" color="secondary" variant="outlined" />}
+                    </Box>
                   </TableCell>
                   <TableCell align="right">{role.permission_keys.length}</TableCell>
                   <TableCell align="right">{role.user_count}</TableCell>
@@ -281,9 +285,9 @@ const RolesPermissions: React.FC = () => {
           </Button>
         </Box>
         <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-          <Table>
+          <Table sx={{ minWidth: 500 }}>
             <TableHead>
-              <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+              <TableRow sx={{ backgroundColor: '#F1F5F9' }}>
                 <TableCell><strong>Name</strong></TableCell>
                 <TableCell align="right"><strong>Rank</strong></TableCell>
                 <TableCell align="right"><strong>Employees</strong></TableCell>
@@ -323,9 +327,9 @@ const RolesPermissions: React.FC = () => {
           </Button>
         </Box>
         <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-          <Table>
+          <Table sx={{ minWidth: 500 }}>
             <TableHead>
-              <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+              <TableRow sx={{ backgroundColor: '#F1F5F9' }}>
                 <TableCell><strong>Name</strong></TableCell>
                 <TableCell align="right"><strong>Employees</strong></TableCell>
                 <TableCell align="right"><strong>Actions</strong></TableCell>
@@ -371,6 +375,22 @@ const RolesPermissions: React.FC = () => {
             fullWidth label="Description (optional)" value={roleForm.description} margin="normal" size="small"
             onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
           />
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Visibility</Typography>
+            <ToggleButtonGroup
+              size="small" exclusive value={roleForm.scope}
+              onChange={(_, v) => v && setRoleForm({ ...roleForm, scope: v })}
+            >
+              <ToggleButton value="tenant">Tenant-wide</ToggleButton>
+              <ToggleButton value="site">Site-scoped</ToggleButton>
+            </ToggleButtonGroup>
+            {roleForm.scope === 'site' && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                People with this role only see employees and attendance at the site(s) they're individually assigned to.
+                Assign someone's site(s) from their entry on the Employees page after giving them this role.
+              </Alert>
+            )}
+          </Box>
           <Divider sx={{ my: 2 }} />
           <Typography variant="subtitle2" sx={{ mb: 1 }}>Permissions</Typography>
           {Object.entries(permissionsByCategory).map(([category, perms]) => {
@@ -410,7 +430,7 @@ const RolesPermissions: React.FC = () => {
           })}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeRoleModal}>Cancel</Button>
+          <Button onClick={closeRoleModal} color="inherit">Cancel</Button>
           <Button variant="contained" onClick={submitRole} disabled={!roleForm.name || roleMutation.isPending}>
             {roleMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
@@ -430,7 +450,7 @@ const RolesPermissions: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeLevelModal}>Cancel</Button>
+          <Button onClick={closeLevelModal} color="inherit">Cancel</Button>
           <Button variant="contained" onClick={submitLevel} disabled={!levelForm.name || levelForm.rank === '' || levelMutation.isPending}>
             {levelMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
@@ -450,7 +470,7 @@ const RolesPermissions: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeDeptModal}>Cancel</Button>
+          <Button onClick={closeDeptModal} color="inherit">Cancel</Button>
           <Button variant="contained" onClick={submitDept} disabled={!deptForm.name.trim() || deptMutation.isPending}>
             {deptMutation.isPending ? 'Saving...' : 'Save'}
           </Button>

@@ -24,8 +24,8 @@ const MOVEMENT_META: Record<string, { label: string; color: string }> = {
   sale: { label: 'Sale', color: '#DC2626' },
   adjustment: { label: 'Adjustment', color: '#D97706' },
   damaged: { label: 'Damaged', color: '#DC2626' },
-  transfer_in: { label: 'Transfer In', color: '#2563EB' },
-  transfer_out: { label: 'Transfer Out', color: '#7C3AED' },
+  transfer_in: { label: 'Transfer In', color: '#334155' },
+  transfer_out: { label: 'Transfer Out', color: '#1E293B' },
 };
 
 type DialogMode = 'in' | 'out' | 'transfer' | null;
@@ -100,7 +100,7 @@ const StockLedger: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Stock Ledger</Typography>
+          <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Stock Ledger</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Every stock movement across all warehouses, weighted-average costed
           </Typography>
@@ -118,7 +118,7 @@ const StockLedger: React.FC = () => {
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 2, mb: 3 }}>
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-              <InventoryIcon sx={{ fontSize: 18, color: '#4F46E5' }} />
+              <InventoryIcon sx={{ fontSize: 18, color: '#0F172A' }} />
               <Typography variant="caption" color="text.secondary">Total Items</Typography>
             </Box>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>{dashboard.total_items}</Typography>
@@ -151,7 +151,7 @@ const StockLedger: React.FC = () => {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-          <Table size="small">
+          <Table sx={{ minWidth: 750 }} size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: '#F8FAFC' }}>
                 <TableCell><strong>Date</strong></TableCell>
@@ -210,7 +210,7 @@ const StockLedger: React.FC = () => {
           <TextField fullWidth label="Reference Number (optional)" value={form.reference_number ?? ''} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} margin="normal" size="small" />
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeDialog}>Cancel</Button>
+          <Button onClick={closeDialog} color="inherit">Cancel</Button>
           <Button variant="contained" onClick={handleSubmit} disabled={!form.item_id || !form.warehouse_id || !form.quantity || isPending}>
             {isPending ? 'Saving...' : 'Save'}
           </Button>
@@ -237,7 +237,7 @@ const StockLedger: React.FC = () => {
           <TextField fullWidth label="Reference Number (optional)" value={form.reference_number ?? ''} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} margin="normal" size="small" />
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeDialog}>Cancel</Button>
+          <Button onClick={closeDialog} color="inherit">Cancel</Button>
           <Button variant="contained" color="error" onClick={handleSubmit} disabled={!form.item_id || !form.warehouse_id || !form.quantity || isPending}>
             {isPending ? 'Saving...' : 'Save'}
           </Button>
@@ -262,7 +262,7 @@ const StockLedger: React.FC = () => {
           <TextField fullWidth label="Notes (optional)" value={form.notes ?? ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} margin="normal" size="small" />
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeDialog}>Cancel</Button>
+          <Button onClick={closeDialog} color="inherit">Cancel</Button>
           <Button variant="contained" onClick={handleSubmit} disabled={!form.item_id || !form.from_warehouse_id || !form.to_warehouse_id || !form.quantity || isPending}>
             {isPending ? 'Saving...' : 'Transfer'}
           </Button>

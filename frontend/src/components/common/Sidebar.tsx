@@ -35,10 +35,13 @@ import {
   Assignment as AssignmentIcon,
   Storage as ResourceIcon,
   FactCheckOutlined as AuditTrailIcon,
+  MyLocation as WorkLocationIcon,
+  InsightsOutlined as InsightsIcon,
   Inventory2 as InventoryIcon,
   SwapVert as StockLedgerIcon,
   Widgets as ItemsIcon,
   TuneOutlined as InventorySetupIcon,
+  AssignmentReturn as CheckoutsIcon,
 } from '@mui/icons-material';
 
 interface SidebarProps {
@@ -95,12 +98,12 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
       color: 'text.secondary',
     },
     '&.Mui-selected': {
-      bgcolor: '#EEF2FF',
-      '& .MuiListItemText-primary': { color: '#4338CA', fontWeight: 600 },
+      bgcolor: '#F1F5F9',
+      '& .MuiListItemText-primary': { color: '#0F172A', fontWeight: 600 },
       '& .MuiListItemIcon-root svg': { color: 'primary.main' },
     },
     '&:hover': { bgcolor: 'action.hover' },
-    '&.Mui-selected:hover': { bgcolor: '#EEF2FF' },
+    '&.Mui-selected:hover': { bgcolor: '#F1F5F9' },
   };
 
   const topItemSx = {
@@ -145,22 +148,21 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-          <Box
+          <Avatar
+            src={tenant?.logo_url || undefined}
+            variant="rounded"
             sx={{
               width: 28,
               height: 28,
               borderRadius: '6px',
               bgcolor: 'primary.main',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               flexShrink: 0,
             }}
           >
             <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.75rem', lineHeight: 1 }}>
               {(tenant?.name ?? 'H')[0].toUpperCase()}
             </Typography>
-          </Box>
+          </Avatar>
           <Typography
             variant="subtitle2"
             sx={{ fontWeight: 600, color: 'text.primary', letterSpacing: '-0.01em' }}
@@ -238,6 +240,30 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
                   <ListItemText primary="Attendance" />
                 </ListItemButton>
               </ListItem>
+              {isManager && (
+                <ListItem disablePadding>
+                  <ListItemButton
+                    onClick={() => handleNavigation('/work-location')}
+                    selected={isSelected('/work-location')}
+                    sx={subItemSx}
+                  >
+                    <ListItemIcon><WorkLocationIcon /></ListItemIcon>
+                    <ListItemText primary="Work & Location" />
+                  </ListItemButton>
+                </ListItem>
+              )}
+              {isManager && (
+                <ListItem disablePadding>
+                  <ListItemButton
+                    onClick={() => handleNavigation('/insights')}
+                    selected={isSelected('/insights')}
+                    sx={subItemSx}
+                  >
+                    <ListItemIcon><InsightsIcon /></ListItemIcon>
+                    <ListItemText primary="Insights" />
+                  </ListItemButton>
+                </ListItem>
+              )}
             </List>
           </Collapse>
         </List>
@@ -284,6 +310,16 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
                 >
                   <ListItemIcon><AssignmentIcon /></ListItemIcon>
                   <ListItemText primary="Assignments" />
+                </ListItemButton>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton
+                  onClick={() => handleNavigation('/item-checkouts')}
+                  selected={isSelected('/item-checkouts')}
+                  sx={subItemSx}
+                >
+                  <ListItemIcon><CheckoutsIcon /></ListItemIcon>
+                  <ListItemText primary="Item Checkouts" />
                 </ListItemButton>
               </ListItem>
               <ListItem disablePadding>
@@ -415,7 +451,9 @@ const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onDrawerToggle }) => {
           <Avatar
             src={avatarSrc}
             sx={{
-              bgcolor: 'primary.main',
+              bgcolor: '#FFFFFF',
+              color: '#334155',
+              border: '1.5px solid #CBD5E1',
               width: 32,
               height: 32,
               fontSize: '0.75rem',

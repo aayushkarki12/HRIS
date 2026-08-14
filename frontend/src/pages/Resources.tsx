@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -65,7 +66,7 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
 };
 
 const TYPE_COLOR: Record<string, string> = {
-  laptop: '#4F46E5', monitor: '#0891B2', keyboard: '#D97706', mouse: '#16A34A', other: '#64748B',
+  laptop: '#0F172A', monitor: '#334155', keyboard: '#475569', mouse: '#1E293B', other: '#64748B',
 };
 
 const REQUEST_STATUS_COLOR: Record<string, any> = {
@@ -75,7 +76,11 @@ const REQUEST_STATUS_COLOR: Record<string, any> = {
 const Resources: React.FC = () => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState(0);
+  const [searchParams] = useSearchParams();
+  // Dashboard's "Pending Resource Requests" card links here with
+  // ?tab=requests so it opens straight on the Requests tab instead of
+  // landing on All Resources and making the user click over.
+  const [tab, setTab] = useState(searchParams.get('tab') === 'requests' ? 1 : 0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formError, setFormError] = useState('');
@@ -182,7 +187,7 @@ const Resources: React.FC = () => {
       <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Resources</Typography>
+            <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Resources</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Manage IT assets and equipment requests</Typography>
           </Box>
           {isAdmin && (
@@ -221,7 +226,7 @@ const Resources: React.FC = () => {
         ) : (resources as any[]).length === 0 ? (
           <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
             <EmptyState
-              icon={<ComputerIcon sx={{ fontSize: 48, color: '#C7D2FE' }} />}
+              icon={<ComputerIcon sx={{ fontSize: 48, color: '#CBD5E1' }} />}
               title="No resources yet"
               description="Add your first IT asset to start tracking equipment."
               action={isAdmin ? { label: 'Add Resource', onClick: () => setIsModalOpen(true) } : undefined}
@@ -291,7 +296,7 @@ const Resources: React.FC = () => {
           </Box>
         ) : (
           <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
-            <Table size="small">
+            <Table sx={{ minWidth: 600 }} size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: '#F8FAFC' }}>
                   {['Resource', ...(isAdmin ? ['Requested by'] : []), 'Reason', 'Status', 'Date', ...(isAdmin ? ['Actions'] : [])].map((h, i) => (
@@ -319,10 +324,20 @@ const Resources: React.FC = () => {
                       {req.admin_notes && (
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>{req.admin_notes}</Typography>
                       )}
+                      {req.assignment?.assigned_at && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                          Assigned {new Date(req.assignment.assigned_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </Typography>
+                      )}
+                      {req.assignment?.returned_at && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          Returned {new Date(req.assignment.returned_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Typography variant="caption" color="text.secondary">
-                        {new Date(req.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        Requested {new Date(req.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                       </Typography>
                     </TableCell>
                     {isAdmin && (
@@ -377,7 +392,7 @@ const Resources: React.FC = () => {
             <TextField fullWidth label="Notes" multiline rows={2} {...register('notes')} margin="normal" size="small" />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={closeModal} size="small">Cancel</Button>
+            <Button onClick={closeModal} size="small" color="inherit">Cancel</Button>
             <Button type="submit" variant="contained" size="small" disabled={isSubmitting}>
               {isSubmitting ? 'Saving…' : 'Save'}
             </Button>
@@ -400,7 +415,7 @@ const Resources: React.FC = () => {
             placeholder="Why do you need this resource?" size="small" />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button size="small" onClick={() => setRequestDialog({ open: false, resource: null })}>Cancel</Button>
+          <Button size="small" color="inherit" onClick={() => setRequestDialog({ open: false, resource: null })}>Cancel</Button>
           <Button size="small" variant="contained"
             disabled={requestMutation.isPending}
             onClick={() => requestDialog.resource && requestMutation.mutate({ resource_id: requestDialog.resource.id, reason: requestReason })}>
@@ -431,7 +446,7 @@ const Resources: React.FC = () => {
             placeholder={decideDialog.action === 'approve' ? 'Any instructions for the employee…' : 'Reason for rejection…'} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button size="small" onClick={() => setDecideDialog({ open: false, request: null, action: 'approve' })}>Cancel</Button>
+          <Button size="small" color="inherit" onClick={() => setDecideDialog({ open: false, request: null, action: 'approve' })}>Cancel</Button>
           <Button size="small" variant="contained"
             color={decideDialog.action === 'approve' ? 'success' : 'error'}
             disabled={approveMutation.isPending || rejectMutation.isPending}

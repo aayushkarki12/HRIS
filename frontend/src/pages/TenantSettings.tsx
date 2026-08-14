@@ -21,6 +21,8 @@ import {
   CircularProgress,
   Alert,
   Skeleton,
+  Collapse,
+  MenuItem,
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -31,10 +33,13 @@ import {
   Delete as DeleteIcon,
   Warehouse as WarehouseIcon,
   MyLocation as MyLocationIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { tenantService, workLocationService } from '../services/api';
+import LocationPickerMap from '../components/common/LocationPickerMap';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 10 },
@@ -125,44 +130,83 @@ const TenantSettings: React.FC = () => {
   // Work locations
   const [locationModal, setLocationModal] = useState(false);
   const [editingLoc, setEditingLoc] = useState<any>(null);
-  const [locForm, setLocForm] = useState({ name: '', address: '', latitude: '', longitude: '', radius: '100' });
+  const [locForm, setLocForm] = useState({ name: '', address: '', latitude: '', longitude: '', radius: '100', parentLocationId: '' });
+  const [collapsedFactories, setCollapsedFactories] = useState<Set<number>>(new Set());
+  const toggleFactory = (id: number) => setCollapsedFactories(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [locError, setLocError] = useState('');
+  const [mapsLink, setMapsLink] = useState('');
 
-  const { data: workLocations, isLoading: locLoading } = useQuery({
-    queryKey: ['workLocations'],
-    queryFn: workLocationService.getAll,
+  const resolveMapsLinkMutation = useMutation({
+    mutationFn: (url: string) => workLocationService.resolveMapsLink(url),
+    onSuccess: (result) => {
+      setLocForm((prev) => ({ ...prev, latitude: String(result.latitude), longitude: String(result.longitude) }));
+      toast.success('Coordinates pulled from the link');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e) || "Couldn't read coordinates from that link"),
+  });
+
+  // Separate instance for the Primary Office Location section above -
+  // distinct state/mutation from the Work Location dialog's since they edit
+  // different forms (formData.office_* vs locForm).
+  const [officeMapsLink, setOfficeMapsLink] = useState('');
+
+  const resolveOfficeMapsLinkMutation = useMutation({
+    mutationFn: (url: string) => workLocationService.resolveMapsLink(url),
+    onSuccess: (result) => {
+      setFormData((prev) => ({ ...prev, office_latitude: String(result.latitude), office_longitude: String(result.longitude) }));
+      toast.success('Coordinates pulled from the link');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e) || "Couldn't read coordinates from that link"),
+  });
+
+  const { data: workLocationsTree, isLoading: locLoading } = useQuery({
+    queryKey: ['workLocationsTree'],
+    queryFn: workLocationService.getTree,
     enabled: isAdmin,
   });
 
   const closeLocModal = () => {
     setLocationModal(false); setEditingLoc(null);
-    setLocForm({ name: '', address: '', latitude: '', longitude: '', radius: '100' });
+    setLocForm({ name: '', address: '', latitude: '', longitude: '', radius: '100', parentLocationId: '' });
     setLocError('');
+    setMapsLink('');
   };
 
   const createLocMutation = useMutation({
     mutationFn: (d: any) => workLocationService.create(d),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['workLocations'] }); toast.success('Location added'); closeLocModal(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['workLocationsTree'] }); toast.success('Location added'); closeLocModal(); },
     onError: (e: any) => { const m = getErrorMessage(e); toast.error(m); setLocError(m); },
   });
 
   const updateLocMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => workLocationService.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['workLocations'] }); toast.success('Location updated'); closeLocModal(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['workLocationsTree'] }); toast.success('Location updated'); closeLocModal(); },
     onError: (e: any) => { const m = getErrorMessage(e); toast.error(m); setLocError(m); },
   });
 
   const deleteLocMutation = useMutation({
     mutationFn: (id: number) => workLocationService.delete(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['workLocations'] }); toast.success('Location deactivated'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['workLocationsTree'] }); toast.success('Location deactivated'); },
     onError: (e: any) => toast.error(getErrorMessage(e)),
   });
 
   const handleEditLoc = (loc: any) => {
     setEditingLoc(loc);
-    setLocForm({ name: loc.name, address: loc.address || '', latitude: String(loc.latitude), longitude: String(loc.longitude), radius: String(loc.radius) });
+    setLocForm({
+      name: loc.name, address: loc.address || '', latitude: String(loc.latitude), longitude: String(loc.longitude),
+      radius: String(loc.radius), parentLocationId: loc.parent_location_id ? String(loc.parent_location_id) : '',
+    });
     setLocationModal(true);
   };
+
+  // Only top-level sites can be a parent (depth capped at 2 - a plant can't
+  // itself have children), and a location can't be its own parent.
+  const parentOptions = (workLocationsTree ?? []).filter((l: any) => !editingLoc || l.id !== editingLoc.id);
+  const editingHasChildren = (editingLoc?.children?.length ?? 0) > 0;
 
   const handleUseMyLocation = () => {
     if (!navigator.geolocation) { toast.error('Geolocation not supported'); return; }
@@ -177,7 +221,11 @@ const TenantSettings: React.FC = () => {
     setLocError('');
     const lat = parseFloat(locForm.latitude), lng = parseFloat(locForm.longitude);
     if (isNaN(lat) || isNaN(lng)) { setLocError('Latitude and longitude must be valid numbers'); return; }
-    const payload = { name: locForm.name, address: locForm.address || null, latitude: lat, longitude: lng, radius: parseFloat(locForm.radius) || 100 };
+    const payload = {
+      name: locForm.name, address: locForm.address || null, latitude: lat, longitude: lng,
+      radius: parseFloat(locForm.radius) || 100,
+      parent_location_id: locForm.parentLocationId ? parseInt(locForm.parentLocationId, 10) : null,
+    };
     if (editingLoc) updateLocMutation.mutate({ id: editingLoc.id, data: payload });
     else createLocMutation.mutate(payload);
   };
@@ -199,7 +247,7 @@ const TenantSettings: React.FC = () => {
       <motion.div variants={fadeUp} custom={0} initial="hidden" animate="visible">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Organization Settings</Typography>
+            <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Organization Settings</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Manage your organization's profile and location configuration</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: '10px', bgcolor: '#fff' }}>
@@ -236,6 +284,30 @@ const TenantSettings: React.FC = () => {
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
             Used for geo-fenced attendance tracking. Employees within the radius will be marked as present at the office.
           </Typography>
+          <LocationPickerMap
+            latitude={formData.office_latitude ? parseFloat(formData.office_latitude) : null}
+            longitude={formData.office_longitude ? parseFloat(formData.office_longitude) : null}
+            onChange={(lat, lng) => setFormData({ ...formData, office_latitude: String(lat), office_longitude: String(lng) })}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, mb: 2 }}>
+            Click the map, or drag the pin, to set the office location.
+          </Typography>
+
+          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <TextField
+              fullWidth size="small" label="Paste a Google Maps link"
+              value={officeMapsLink} onChange={e => setOfficeMapsLink(e.target.value)}
+              placeholder="https://maps.app.goo.gl/..."
+            />
+            <Button
+              size="small" variant="outlined" sx={{ flexShrink: 0 }}
+              disabled={!officeMapsLink.trim() || resolveOfficeMapsLinkMutation.isPending}
+              onClick={() => resolveOfficeMapsLinkMutation.mutate(officeMapsLink.trim())}
+            >
+              {resolveOfficeMapsLinkMutation.isPending ? <CircularProgress size={14} /> : 'Use Link'}
+            </Button>
+          </Box>
+
           <FieldGrid cols={3}>
             <TextField size="small" fullWidth label="Latitude" name="office_latitude" type="number" value={formData.office_latitude} onChange={handleChange} placeholder="27.7172" />
             <TextField size="small" fullWidth label="Longitude" name="office_longitude" type="number" value={formData.office_longitude} onChange={handleChange} placeholder="85.3240" />
@@ -298,7 +370,7 @@ const TenantSettings: React.FC = () => {
             </Box>
           ) : (
             <TableContainer>
-              <Table size="small">
+              <Table sx={{ minWidth: 600 }} size="small">
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary', borderBottom: '1px solid', borderColor: 'divider' } }}>
                     <TableCell>Name</TableCell>
@@ -310,33 +382,86 @@ const TenantSettings: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(!workLocations || workLocations.length === 0) ? (
+                  {(!workLocationsTree || workLocationsTree.length === 0) ? (
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                         <Typography variant="body2" color="text.secondary">No additional work locations configured</Typography>
                       </TableCell>
                     </TableRow>
-                  ) : workLocations.map((loc: any) => (
-                    <TableRow key={loc.id} hover sx={{ '& td': { fontSize: '0.8125rem' } }}>
-                      <TableCell sx={{ fontWeight: 600 }}>{loc.name}</TableCell>
-                      <TableCell color="text.secondary">{loc.address || '—'}</TableCell>
-                      <TableCell>
-                        <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-                          {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">{loc.radius}m</TableCell>
-                      <TableCell>
-                        <Chip label={loc.is_active ? 'Active' : 'Inactive'} color={loc.is_active ? 'success' : 'default'} size="small" />
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton size="small" onClick={() => handleEditLoc(loc)}><EditIcon sx={{ fontSize: 15 }} /></IconButton>
-                        {loc.is_active && (
-                          <IconButton size="small" color="error" onClick={() => deleteLocMutation.mutate(loc.id)}><DeleteIcon sx={{ fontSize: 15 }} /></IconButton>
+                  ) : workLocationsTree.map((loc: any) => {
+                    const hasChildren = (loc.children?.length ?? 0) > 0;
+                    const expanded = !collapsedFactories.has(loc.id);
+                    return (
+                      <React.Fragment key={loc.id}>
+                        <TableRow hover sx={{ '& td': { fontSize: '0.8125rem' } }}>
+                          <TableCell sx={{ fontWeight: 600 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              {hasChildren ? (
+                                <IconButton size="small" onClick={() => toggleFactory(loc.id)} sx={{ p: 0.25 }}>
+                                  {expanded ? <ExpandLessIcon sx={{ fontSize: 16 }} /> : <ExpandMoreIcon sx={{ fontSize: 16 }} />}
+                                </IconButton>
+                              ) : (
+                                <Box sx={{ width: 24 }} />
+                              )}
+                              {loc.name}
+                              {hasChildren && (
+                                <Chip label={`${loc.children.length} plant${loc.children.length > 1 ? 's' : ''}`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
+                              )}
+                            </Box>
+                          </TableCell>
+                          <TableCell color="text.secondary">{loc.address || '—'}</TableCell>
+                          <TableCell>
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                              {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">{loc.radius}m</TableCell>
+                          <TableCell>
+                            <Chip label={loc.is_active ? 'Active' : 'Inactive'} color={loc.is_active ? 'success' : 'default'} size="small" />
+                          </TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" onClick={() => handleEditLoc(loc)}><EditIcon sx={{ fontSize: 15 }} /></IconButton>
+                            {loc.is_active && (
+                              <IconButton size="small" color="error" onClick={() => deleteLocMutation.mutate(loc.id)}><DeleteIcon sx={{ fontSize: 15 }} /></IconButton>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                        {hasChildren && (
+                          <TableRow>
+                            <TableCell colSpan={6} sx={{ p: 0, border: 0 }}>
+                              <Collapse in={expanded} timeout="auto" unmountOnExit>
+                                <Table size="small">
+                                  <TableBody>
+                                    {loc.children.map((child: any) => (
+                                      <TableRow key={child.id} hover sx={{ '& td': { fontSize: '0.8125rem', bgcolor: '#FAFAFA' } }}>
+                                        <TableCell sx={{ pl: 6 }}>{child.name}</TableCell>
+                                        <TableCell color="text.secondary">{child.address || '—'}</TableCell>
+                                        <TableCell>
+                                          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                                            {child.latitude.toFixed(5)}, {child.longitude.toFixed(5)}
+                                          </Typography>
+                                        </TableCell>
+                                        <TableCell align="right">{child.radius}m</TableCell>
+                                        <TableCell>
+                                          <Chip label={child.is_active ? 'Active' : 'Inactive'} color={child.is_active ? 'success' : 'default'} size="small" />
+                                        </TableCell>
+                                        <TableCell align="right">
+                                          <IconButton size="small" onClick={() => handleEditLoc(child)}><EditIcon sx={{ fontSize: 15 }} /></IconButton>
+                                          {child.is_active && (
+                                            <IconButton size="small" color="error" onClick={() => deleteLocMutation.mutate(child.id)}><DeleteIcon sx={{ fontSize: 15 }} /></IconButton>
+                                          )}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </Collapse>
+                            </TableCell>
+                          </TableRow>
                         )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -354,6 +479,46 @@ const TenantSettings: React.FC = () => {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
             <TextField fullWidth size="small" label="Location Name" value={locForm.name} onChange={e => setLocForm({ ...locForm, name: e.target.value })} placeholder="e.g. Hetauda Warehouse" required />
             <TextField fullWidth size="small" label="Address" value={locForm.address} onChange={e => setLocForm({ ...locForm, address: e.target.value })} placeholder="Optional" />
+            <TextField
+              fullWidth size="small" select label="Part of factory/site"
+              value={locForm.parentLocationId}
+              onChange={e => setLocForm({ ...locForm, parentLocationId: e.target.value })}
+              disabled={editingHasChildren}
+              helperText={editingHasChildren ? 'This location already has its own plants and cannot become a plant itself' : 'Leave as None for a top-level site/factory'}
+            >
+              <MenuItem value="">None (top-level site/factory)</MenuItem>
+              {parentOptions.map((opt: any) => (
+                <MenuItem key={opt.id} value={String(opt.id)}>{opt.name}</MenuItem>
+              ))}
+            </TextField>
+
+            <LocationPickerMap
+              latitude={locForm.latitude ? parseFloat(locForm.latitude) : null}
+              longitude={locForm.longitude ? parseFloat(locForm.longitude) : null}
+              onChange={(lat, lng) => setLocForm({ ...locForm, latitude: String(lat), longitude: String(lng) })}
+              defaultCenter={
+                (tenant as any)?.office_latitude && (tenant as any)?.office_longitude
+                  ? [(tenant as any).office_latitude, (tenant as any).office_longitude]
+                  : undefined
+              }
+            />
+            <Typography variant="caption" color="text.secondary">Click the map, or drag the pin, to set the location.</Typography>
+
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                fullWidth size="small" label="Paste a Google Maps link"
+                value={mapsLink} onChange={e => setMapsLink(e.target.value)}
+                placeholder="https://maps.app.goo.gl/..."
+              />
+              <Button
+                size="small" variant="outlined" sx={{ flexShrink: 0 }}
+                disabled={!mapsLink.trim() || resolveMapsLinkMutation.isPending}
+                onClick={() => resolveMapsLinkMutation.mutate(mapsLink.trim())}
+              >
+                {resolveMapsLinkMutation.isPending ? <CircularProgress size={14} /> : 'Use Link'}
+              </Button>
+            </Box>
+
             <Box sx={{ display: 'flex', gap: 1.5 }}>
               <TextField size="small" label="Latitude" type="number" value={locForm.latitude} onChange={e => setLocForm({ ...locForm, latitude: e.target.value })} placeholder="27.4287" fullWidth />
               <TextField size="small" label="Longitude" type="number" value={locForm.longitude} onChange={e => setLocForm({ ...locForm, longitude: e.target.value })} placeholder="85.0322" fullWidth />
@@ -365,7 +530,7 @@ const TenantSettings: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={closeLocModal} size="small">Cancel</Button>
+          <Button onClick={closeLocModal} size="small" color="inherit">Cancel</Button>
           <Button variant="contained" size="small" onClick={handleSubmitLoc} disabled={!locForm.name || !locForm.latitude || !locForm.longitude || createLocMutation.isPending || updateLocMutation.isPending} sx={{ fontWeight: 600 }}>
             {createLocMutation.isPending || updateLocMutation.isPending ? <CircularProgress size={14} color="inherit" /> : editingLoc ? 'Update' : 'Create Location'}
           </Button>

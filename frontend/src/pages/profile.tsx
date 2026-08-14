@@ -29,10 +29,11 @@ import {
   Work as WorkIcon,
   ContactPhone as EmergencyIcon,
   AccountBalance as BankIcon,
+  MarkEmailRead as EmailIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { employeeService, userService, getErrorMessage } from '../services/api';
+import { employeeService, userService, authService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8010/api/v1').replace(/\/api\/v1\/?$/, '');
@@ -179,6 +180,23 @@ const Profile: React.FC = () => {
     },
   });
 
+  const [newLoginEmail, setNewLoginEmail] = useState('');
+  const [emailChangeError, setEmailChangeError] = useState('');
+  const [emailChangeSent, setEmailChangeSent] = useState(false);
+
+  const emailChangeMutation = useMutation({
+    mutationFn: (email: string) => authService.requestEmailChange(email),
+    onSuccess: () => {
+      setEmailChangeSent(true);
+      toast.success('Confirmation link sent to your new email');
+    },
+    onError: (err: any) => {
+      const msg = getErrorMessage(err, 'Failed to request email change');
+      setEmailChangeError(msg);
+      toast.error(msg);
+    },
+  });
+
   const pwdMutation = useMutation({
     mutationFn: (data: PwdForm) => {
       if (!user) throw new Error('Not logged in');
@@ -232,7 +250,7 @@ const Profile: React.FC = () => {
       <motion.div variants={fadeUp} custom={0} initial="hidden" animate="visible">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>My Profile</Typography>
+            <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>My Profile</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Manage your personal information and account settings</Typography>
           </Box>
           {!isEditing ? (
@@ -257,7 +275,7 @@ const Profile: React.FC = () => {
             {isLoading ? (
               <Skeleton variant="circular" width={80} height={80} />
             ) : (
-              <Avatar src={avatarSrc} sx={{ width: 80, height: 80, fontSize: '1.5rem', fontWeight: 700, bgcolor: 'primary.main' }}>
+              <Avatar src={avatarSrc} sx={{ width: 80, height: 80, fontSize: '1.5rem', fontWeight: 700, bgcolor: '#FFFFFF', color: '#334155', border: '2px solid #CBD5E1' }}>
                 {!avatarSrc && initials}
               </Avatar>
             )}
@@ -375,8 +393,56 @@ const Profile: React.FC = () => {
         </Box>
       </form>
 
-      {/* Change Password */}
+      {/* Login Email */}
       <motion.div variants={fadeUp} custom={6} initial="hidden" animate="visible">
+        <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '12px', overflow: 'hidden', bgcolor: '#fff', mt: 2.5 }}>
+          <Box sx={{ px: 3, py: 2, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#FAFAFA' }}>
+            <Box sx={{ color: 'text.secondary', display: 'flex' }}><EmailIcon sx={{ fontSize: 16 }} /></Box>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem' }}>Login Email</Typography>
+          </Box>
+          <Box sx={{ p: 3 }}>
+            <Alert severity="info" sx={{ mb: 2.5, fontSize: '0.8125rem' }}>
+              This is the email you sign in with - separate from the contact email above. Changing it requires
+              clicking a confirmation link sent to the new address; your current login email keeps working until then.
+            </Alert>
+            {emailChangeSent ? (
+              <Alert severity="success" onClose={() => { setEmailChangeSent(false); setNewLoginEmail(''); }}>
+                Check {newLoginEmail} for a confirmation link.
+              </Alert>
+            ) : (
+              <>
+                {emailChangeError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setEmailChangeError('')}>{emailChangeError}</Alert>}
+                <FieldGrid cols={3}>
+                  <TextField size="small" label="Current Login Email" value={user?.email || ''} disabled fullWidth />
+                  <TextField
+                    size="small"
+                    label="New Login Email"
+                    type="email"
+                    value={newLoginEmail}
+                    onChange={(e) => setNewLoginEmail(e.target.value)}
+                    fullWidth
+                  />
+                </FieldGrid>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    disabled={!newLoginEmail || emailChangeMutation.isPending}
+                    startIcon={<EmailIcon sx={{ fontSize: 15 }} />}
+                    sx={{ fontWeight: 600 }}
+                    onClick={() => { setEmailChangeError(''); emailChangeMutation.mutate(newLoginEmail); }}
+                  >
+                    {emailChangeMutation.isPending ? <CircularProgress size={14} color="inherit" /> : 'Send Confirmation Link'}
+                  </Button>
+                </Box>
+              </>
+            )}
+          </Box>
+        </Box>
+      </motion.div>
+
+      {/* Change Password */}
+      <motion.div variants={fadeUp} custom={7} initial="hidden" animate="visible">
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '12px', overflow: 'hidden', bgcolor: '#fff', mt: 2.5 }}>
           <Box sx={{ px: 3, py: 2, display: 'flex', alignItems: 'center', gap: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#FAFAFA' }}>
             <Box sx={{ color: 'text.secondary', display: 'flex' }}><LockIcon sx={{ fontSize: 16 }} /></Box>

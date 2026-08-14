@@ -96,7 +96,7 @@ const Items: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Items</Typography>
+          <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Items</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Stock-keeping units, costed on a weighted-average basis
           </Typography>
@@ -116,7 +116,7 @@ const Items: React.FC = () => {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-          <Table>
+          <Table sx={{ minWidth: 750 }}>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F8FAFC' }}>
                 <TableCell><strong>SKU</strong></TableCell>
@@ -215,7 +215,7 @@ const Items: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeModal}>Cancel</Button>
+          <Button onClick={closeModal} color="inherit">Cancel</Button>
           <Button variant="contained" onClick={submit} disabled={!form.sku || !form.name || saveMutation.isPending}>
             {saveMutation.isPending ? 'Saving...' : 'Save'}
           </Button>
