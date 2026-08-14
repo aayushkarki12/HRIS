@@ -90,7 +90,7 @@ const InventorySetup: React.FC = () => {
   return (
     <Box>
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Inventory Setup</Typography>
+        <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Inventory Setup</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           Warehouses, categories, units of measure, and suppliers used across the stock ledger
         </Typography>
@@ -117,7 +117,7 @@ const InventorySetup: React.FC = () => {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-          <Table>
+          <Table sx={{ minWidth: 500 }}>
             <TableHead>
               <TableRow sx={{ bgcolor: '#F8FAFC' }}>
                 {meta.fields.map((f) => <TableCell key={f.key}><strong>{f.label}</strong></TableCell>)}
@@ -171,7 +171,7 @@ const InventorySetup: React.FC = () => {
           ))}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeModal}>Cancel</Button>
+          <Button onClick={closeModal} color="inherit">Cancel</Button>
           <Button variant="contained" onClick={submit} disabled={!requiredFilled || saveMutation.isPending}>
             {saveMutation.isPending ? 'Saving...' : 'Save'}
           </Button>

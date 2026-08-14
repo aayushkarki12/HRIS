@@ -2,16 +2,6 @@ import { createTheme } from '@mui/material/styles';
 import type { Shadows } from '@mui/material/styles';
 
 // ─── Palette tokens ──────────────────────────────────────────────────────────
-const INDIGO = {
-  50: '#EEF2FF',
-  100: '#E0E7FF',
-  200: '#C7D2FE',
-  500: '#6366F1',
-  600: '#4F46E5',
-  700: '#4338CA',
-  900: '#312E81',
-};
-
 const SLATE = {
   50: '#F8FAFC',
   100: '#F1F5F9',
@@ -23,6 +13,7 @@ const SLATE = {
   700: '#334155',
   800: '#1E293B',
   900: '#0F172A',
+  950: '#020617',
 };
 
 // ─── Shadow scale ─────────────────────────────────────────────────────────────
@@ -60,9 +51,9 @@ export const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: INDIGO[600],
-      light: INDIGO[500],
-      dark: INDIGO[700],
+      main: SLATE[900],
+      light: SLATE[700],
+      dark: SLATE[950],
       contrastText: '#FFFFFF',
     },
     secondary: {
@@ -171,13 +162,13 @@ export const theme = createTheme({
           padding: '7px 14px',
           transition: 'all 150ms ease',
           '&:focus-visible': {
-            outline: `2px solid ${INDIGO[600]}`,
+            outline: `2px solid ${SLATE[900]}`,
             outlineOffset: 2,
           },
         },
         contained: { boxShadow: 'none', '&:hover': { boxShadow: 'none' } },
         containedPrimary: {
-          '&:hover': { backgroundColor: INDIGO[700] },
+          '&:hover': { backgroundColor: SLATE[950] },
         },
         outlined: {
           borderColor: SLATE[300],
@@ -200,7 +191,7 @@ export const theme = createTheme({
           transition: 'all 150ms ease',
           color: SLATE[500],
           '&:hover': { backgroundColor: SLATE[100], color: SLATE[700] },
-          '&:focus-visible': { outline: `2px solid ${INDIGO[600]}`, outlineOffset: 2 },
+          '&:focus-visible': { outline: `2px solid ${SLATE[900]}`, outlineOffset: 2 },
         },
         sizeSmall: { padding: 6 },
       },
@@ -215,7 +206,7 @@ export const theme = createTheme({
           backgroundColor: '#FFFFFF',
           '& fieldset': { borderColor: SLATE[300] },
           '&:hover fieldset': { borderColor: SLATE[400] },
-          '&.Mui-focused fieldset': { borderColor: INDIGO[600], borderWidth: '1.5px' },
+          '&.Mui-focused fieldset': { borderColor: SLATE[900], borderWidth: '1.5px' },
           '&.Mui-error fieldset': { borderColor: '#DC2626' },
           '&.Mui-disabled': { backgroundColor: SLATE[50] },
         },
@@ -230,7 +221,7 @@ export const theme = createTheme({
         root: {
           fontSize: '0.875rem',
           color: SLATE[500],
-          '&.Mui-focused': { color: INDIGO[600] },
+          '&.Mui-focused': { color: SLATE[900] },
           '&.Mui-error': { color: '#DC2626' },
         },
       },
@@ -306,7 +297,7 @@ export const theme = createTheme({
         colorError:   { backgroundColor: '#FEE2E2', color: '#B91C1C', borderColor: '#FECACA' },
         colorWarning: { backgroundColor: '#FEF3C7', color: '#92400E', borderColor: '#FDE68A' },
         colorInfo:    { backgroundColor: '#E0F2FE', color: '#075985', borderColor: '#BAE6FD' },
-        colorPrimary: { backgroundColor: INDIGO[50],  color: INDIGO[700], borderColor: INDIGO[200] },
+        colorPrimary: { backgroundColor: SLATE[900],  color: '#FFFFFF',  borderColor: SLATE[900] },
         colorDefault: { backgroundColor: SLATE[100],  color: SLATE[600],  borderColor: SLATE[200] },
       },
     },
@@ -317,8 +308,10 @@ export const theme = createTheme({
         root: {
           border: `1px solid ${SLATE[200]}`,
           borderRadius: 8,
-          overflow: 'hidden',
+          overflowX: 'auto',
+          overflowY: 'hidden',
           boxShadow: 'none',
+          WebkitOverflowScrolling: 'touch',
         },
       },
     },
@@ -449,10 +442,10 @@ export const theme = createTheme({
           transition: 'background-color 100ms ease',
           '&:hover': { backgroundColor: SLATE[100] },
           '&.Mui-selected': {
-            backgroundColor: INDIGO[50],
-            color: INDIGO[700],
+            backgroundColor: SLATE[100],
+            color: SLATE[950],
             fontWeight: 500,
-            '&:hover': { backgroundColor: INDIGO[100] },
+            '&:hover': { backgroundColor: SLATE[200] },
           },
         },
       },
@@ -468,13 +461,13 @@ export const theme = createTheme({
           transition: 'all 150ms ease',
           '&:hover': { backgroundColor: SLATE[100] },
           '&.Mui-selected': {
-            backgroundColor: INDIGO[50],
-            color: INDIGO[600],
-            '&:hover': { backgroundColor: INDIGO[100] },
-            '& .MuiListItemIcon-root': { color: INDIGO[600] },
-            '& .MuiListItemText-primary': { fontWeight: 600, color: INDIGO[700] },
+            backgroundColor: SLATE[100],
+            color: SLATE[900],
+            '&:hover': { backgroundColor: SLATE[200] },
+            '& .MuiListItemIcon-root': { color: SLATE[900] },
+            '& .MuiListItemText-primary': { fontWeight: 600, color: SLATE[950] },
           },
-          '&:focus-visible': { outline: `2px solid ${INDIGO[600]}`, outlineOffset: -2 },
+          '&:focus-visible': { outline: `2px solid ${SLATE[900]}`, outlineOffset: -2 },
         },
       },
     },
@@ -577,14 +570,14 @@ export const theme = createTheme({
           minHeight: 44,
           letterSpacing: 0,
           color: SLATE[500],
-          '&.Mui-selected': { color: INDIGO[600], fontWeight: 600 },
+          '&.Mui-selected': { color: SLATE[900], fontWeight: 600 },
         },
       },
     },
 
     MuiTabs: {
       styleOverrides: {
-        indicator: { height: 2, borderRadius: 1, backgroundColor: INDIGO[600] },
+        indicator: { height: 2, borderRadius: 1, backgroundColor: SLATE[900] },
       },
     },
 
@@ -592,7 +585,7 @@ export const theme = createTheme({
     MuiAvatar: {
       styleOverrides: {
         root: { fontSize: '0.875rem', fontWeight: 600 },
-        colorDefault: { backgroundColor: INDIGO[100], color: INDIGO[700] },
+        colorDefault: { backgroundColor: SLATE[200], color: SLATE[950] },
       },
     },
 
@@ -621,9 +614,9 @@ export const theme = createTheme({
           borderColor: SLATE[300],
           color: SLATE[600],
           '&.Mui-selected': {
-            backgroundColor: INDIGO[50],
-            color: INDIGO[700],
-            borderColor: INDIGO[200],
+            backgroundColor: SLATE[100],
+            color: SLATE[950],
+            borderColor: SLATE[300],
             fontWeight: 600,
           },
         },
@@ -646,7 +639,7 @@ export const theme = createTheme({
         option: {
           fontSize: '0.875rem',
           '&:hover': { backgroundColor: SLATE[100] },
-          '&[aria-selected="true"]': { backgroundColor: INDIGO[50], color: INDIGO[700] },
+          '&[aria-selected="true"]': { backgroundColor: SLATE[100], color: SLATE[950] },
         },
         inputRoot: { gap: 4 },
       },
@@ -656,8 +649,8 @@ export const theme = createTheme({
     MuiSwitch: {
       styleOverrides: {
         switchBase: {
-          '&.Mui-checked': { color: INDIGO[600] },
-          '&.Mui-checked + .MuiSwitch-track': { backgroundColor: INDIGO[600] },
+          '&.Mui-checked': { color: SLATE[900] },
+          '&.Mui-checked + .MuiSwitch-track': { backgroundColor: SLATE[900] },
         },
       },
     },

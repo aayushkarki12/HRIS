@@ -29,8 +29,8 @@ const ACTION_ICONS: Record<string, React.ElementType> = {
 };
 
 const MODULE_COLORS: Record<string, string> = {
-  Accounting: '#4F46E5', Expenses: '#D97706', HR: '#16A34A', Payroll: '#0891B2',
-  Resources: '#7C3AED', Security: '#DC2626', Other: '#64748B',
+  Accounting: '#0F172A', Expenses: '#334155', HR: '#475569', Payroll: '#64748B',
+  Resources: '#1E293B', Security: '#0F172A', Other: '#94A3B8',
 };
 
 const fmtDateTime = (d: string) => new Date(d).toLocaleString(undefined, {
@@ -98,7 +98,7 @@ const AuditTrail: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Audit Trail</Typography>
+          <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Audit Trail</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Immutable record of every tracked action across the system
           </Typography>

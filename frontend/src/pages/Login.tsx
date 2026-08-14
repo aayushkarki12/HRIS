@@ -15,6 +15,7 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import PersonIcon from '@mui/icons-material/Person';
 import LockIcon from '@mui/icons-material/Lock';
+import CorporateFareIcon from '@mui/icons-material/CorporateFare';
 import { motion } from 'framer-motion';
 
 const Login: React.FC = () => {
@@ -85,9 +86,9 @@ const Login: React.FC = () => {
             mb: 3,
           }}
         >
-          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.25rem', letterSpacing: '-0.02em' }}>H</Typography>
+          <CorporateFareIcon sx={{ color: '#fff', fontSize: 26 }} />
         </Box>
-        <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, mb: 1.5, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+        <Typography variant="h4" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", color: '#fff', fontWeight: 700, mb: 1.5, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
           HRIS System
         </Typography>
         <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9375rem', lineHeight: 1.6, mb: 4 }}>
@@ -123,11 +124,11 @@ const Login: React.FC = () => {
             {/* Mobile logo */}
             <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1, mb: 3 }}>
               <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.875rem' }}>H</Typography>
+                <CorporateFareIcon sx={{ color: '#fff', fontSize: 18 }} />
               </Box>
               <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>HRIS System</Typography>
             </Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mb: 0.5 }}>
+            <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em', mb: 0.5 }}>
               Welcome back
             </Typography>
             <Typography variant="body2" color="text.secondary">

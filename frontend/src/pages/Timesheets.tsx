@@ -59,7 +59,7 @@ const Timesheets: React.FC = () => {
   const [timesheetData, setTimesheetData] = useState({ week_start_date: getDefaultWeekStart() });
   const [entryData, setEntryData] = useState({
     project_id: '', date: new Date().toISOString().split('T')[0],
-    hours: '', description: '', is_billable: true,
+    hours: '', description: '', is_billable: true, work_location_id: '',
   });
 
   const { data: timesheets = [], isLoading } = useQuery({
@@ -71,6 +71,13 @@ const Timesheets: React.FC = () => {
     queryKey: ['projects'],
     queryFn: projectService.getAll,
   });
+
+  const { data: entryProjectLocations = [] } = useQuery({
+    queryKey: ['project-work-locations', entryData.project_id],
+    queryFn: () => projectService.getWorkLocations(Number(entryData.project_id)),
+    enabled: !!entryData.project_id,
+  });
+  const entryActiveLocations = (entryProjectLocations as any[]).filter((l: any) => l.is_active);
 
   const createMutation = useMutation({
     mutationFn: () => timesheetService.create({ week_start_date: timesheetData.week_start_date }),
@@ -91,13 +98,14 @@ const Timesheets: React.FC = () => {
       hours: parseFloat(entryData.hours),
       description: entryData.description,
       is_billable: entryData.is_billable,
+      work_location_id: entryData.work_location_id || null,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
       toast.success('Entry added');
       setIsEntryModalOpen(false);
       setSelectedTimesheet(null);
-      setEntryData({ project_id: '', date: new Date().toISOString().split('T')[0], hours: '', description: '', is_billable: true });
+      setEntryData({ project_id: '', date: new Date().toISOString().split('T')[0], hours: '', description: '', is_billable: true, work_location_id: '' });
       setModalError('');
     },
     onError: (e: any) => setModalError(getErrorMessage(e)),
@@ -124,14 +132,20 @@ const Timesheets: React.FC = () => {
 
   const openAddEntry = (ts: any) => {
     setSelectedTimesheet(ts);
-    setEntryData({ project_id: '', date: new Date().toISOString().split('T')[0], hours: '', description: '', is_billable: true });
+    setEntryData({ project_id: '', date: new Date().toISOString().split('T')[0], hours: '', description: '', is_billable: true, work_location_id: '' });
     setModalError('');
     setIsEntryModalOpen(true);
   };
 
   const handleEntryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.name === 'is_billable' ? e.target.value === 'true' : e.target.value;
-    setEntryData(prev => ({ ...prev, [e.target.name]: value }));
+    setEntryData(prev => ({
+      ...prev,
+      [e.target.name]: value,
+      // A site only makes sense for the project it's assigned to - clear it
+      // whenever the project selection changes.
+      ...(e.target.name === 'project_id' ? { work_location_id: '' } : {}),
+    }));
   };
 
   return (
@@ -140,7 +154,7 @@ const Timesheets: React.FC = () => {
       <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Timesheets</Typography>
+            <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Timesheets</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Track your weekly work hours by project</Typography>
           </Box>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setModalError(''); setIsModalOpen(true); }} size="small">
@@ -157,7 +171,7 @@ const Timesheets: React.FC = () => {
       ) : (timesheets as any[]).length === 0 ? (
         <Paper sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
           <EmptyState
-            icon={<ScheduleIcon sx={{ fontSize: 48, color: '#C7D2FE' }} />}
+            icon={<ScheduleIcon sx={{ fontSize: 48, color: '#CBD5E1' }} />}
             title="No timesheets yet"
             description="Create your first timesheet to start logging hours against projects."
             action={{ label: 'New Timesheet', onClick: () => setIsModalOpen(true) }}
@@ -211,7 +225,7 @@ const Timesheets: React.FC = () => {
 
                   {/* Entries table */}
                   <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5 }}>
-                    <Table size="small">
+                    <Table sx={{ minWidth: 600 }} size="small">
                       <TableHead>
                         <TableRow sx={{ bgcolor: '#F8FAFC' }}>
                           {['Date', 'Project', 'Hours', 'Description', 'Billable', ...(ts.status === 'draft' ? [''] : [])].map((h, j) => (
@@ -274,7 +288,7 @@ const Timesheets: React.FC = () => {
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setIsModalOpen(false)} size="small">Cancel</Button>
+          <Button color="inherit" onClick={() => setIsModalOpen(false)} size="small">Cancel</Button>
           <Button variant="contained" size="small"
             onClick={() => createMutation.mutate()}
             disabled={!timesheetData.week_start_date || createMutation.isPending}>
@@ -296,6 +310,16 @@ const Timesheets: React.FC = () => {
               <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
             ))}
           </TextField>
+          {entryData.project_id && entryActiveLocations.length > 0 && (
+            <TextField fullWidth select label="Work Location" name="work_location_id"
+              value={entryData.work_location_id} onChange={handleEntryChange} margin="normal" size="small"
+              helperText="Leave as auto-detect to use that day's clock-in site">
+              <MenuItem value="">Auto-detect from clock-in</MenuItem>
+              {entryActiveLocations.map((link: any) => (
+                <MenuItem key={link.work_location_id} value={link.work_location_id}>{link.work_location?.name}</MenuItem>
+              ))}
+            </TextField>
+          )}
           <TextField fullWidth label="Date" type="date" name="date"
             value={entryData.date} onChange={handleEntryChange}
             margin="normal" size="small" slotProps={{ inputLabel: { shrink: true } }} />
@@ -313,7 +337,7 @@ const Timesheets: React.FC = () => {
           </TextField>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setIsEntryModalOpen(false)} size="small">Cancel</Button>
+          <Button color="inherit" onClick={() => setIsEntryModalOpen(false)} size="small">Cancel</Button>
           <Button variant="contained" size="small"
             onClick={() => addEntryMutation.mutate()}
             disabled={!entryData.date || !entryData.hours || addEntryMutation.isPending}>

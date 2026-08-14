@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Paper,
   TextField,
@@ -20,9 +20,10 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
-import type { ConfirmationResult, RecaptchaVerifier } from 'firebase/auth';
+import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
+import CorporateFareIcon from '@mui/icons-material/CorporateFare';
 import { authService, getErrorMessage } from '../services/api';
-import { createRecaptchaVerifier, sendPhoneOtp, isFirebaseConfigured } from '../services/firebase';
+import { isEmailSignInLink, completeEmailLinkSignIn, sendInviteEmailLink, isFirebaseConfigured } from '../services/firebase';
 
 interface InvitationDetails {
   first_name: string;
@@ -37,6 +38,7 @@ interface InvitationDetails {
   tenant_name: string;
   username_suggestion: string;
   phone_suggestion?: string | null;
+  email_verified: boolean;
 }
 
 const AcceptInvitation: React.FC = () => {
@@ -57,19 +59,21 @@ const AcceptInvitation: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  // ---------- Phone verification (Firebase OTP) ----------
-  // Required before Finish Setup is enabled - self-registration was removed,
-  // so this is the only place a phone number gets collected/verified. See
-  // HRIS_backend app/core/firebase.py and POST /auth/verify-phone.
+  // Plain, optional contact field - not the same as email verification (see
+  // below), which happens via Firebase Email Link before this form is even shown.
   const [phone, setPhone] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
-  const [phoneError, setPhoneError] = useState('');
-  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
-  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+
+  // Email verification gate (Firebase Email Link -
+  // https://firebase.google.com/docs/auth/web/email-link-auth). The
+  // username/password form only ever renders once emailVerified is true -
+  // POST /auth/accept-invitation refuses to complete otherwise anyway, this
+  // just avoids showing a form that would fail.
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendError, setResendError] = useState('');
+  const [resent, setResent] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -81,47 +85,42 @@ const AcceptInvitation: React.FC = () => {
         setDetails(data);
         setUsername(data.username_suggestion);
         if (data.phone_suggestion) setPhone(data.phone_suggestion);
+        setEmailVerified(!!data.email_verified);
       })
       .catch((err) => setLoadError(getErrorMessage(err, 'This invitation link is invalid or has expired.')))
       .finally(() => setLoadingDetails(false));
   }, [token]);
 
-  const handleSendOtp = async () => {
-    setPhoneError('');
-    if (!/^\+[1-9]\d{6,14}$/.test(phone)) {
-      setPhoneError('Enter your phone number with country code, e.g. +15551234567');
-      return;
-    }
-    setSendingOtp(true);
-    try {
-      if (!recaptchaVerifierRef.current) {
-        recaptchaVerifierRef.current = createRecaptchaVerifier('recaptcha-container');
-      }
-      confirmationResultRef.current = await sendPhoneOtp(phone, recaptchaVerifierRef.current);
-      setOtpSent(true);
-    } catch (err: any) {
-      setPhoneError(err?.message || 'Failed to send verification code. Check the number and try again.');
-    } finally {
-      setSendingOtp(false);
-    }
-  };
+  // If this page load came from clicking the Firebase-emailed link (not
+  // just this route's own ?token=), complete the sign-in and hand the
+  // resulting ID token to the backend to flip email_verified.
+  useEffect(() => {
+    if (!details || emailVerified || verifying) return;
+    if (!isEmailSignInLink()) return;
 
-  const handleVerifyOtp = async () => {
-    setPhoneError('');
-    if (!confirmationResultRef.current) {
-      setPhoneError('Send a code first');
-      return;
-    }
-    setVerifyingOtp(true);
+    setVerifying(true);
+    setVerifyError('');
+    completeEmailLinkSignIn(details.email)
+      .then((idToken) => authService.verifyEmailInvite(token, idToken))
+      .then(() => setEmailVerified(true))
+      .catch((err) => setVerifyError(getErrorMessage(err, 'Email verification failed. Try opening the link again, or request a new one below.')))
+      .finally(() => setVerifying(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [details]);
+
+  const handleResend = async () => {
+    if (!details) return;
+    setResendError('');
+    setResent(false);
+    setResending(true);
     try {
-      const credential = await confirmationResultRef.current.confirm(otpCode);
-      const idToken = await credential.user.getIdToken();
-      await authService.verifyPhone(token, idToken);
-      setPhoneVerified(true);
+      const continueUrl = `${window.location.origin}/invitation?token=${token}`;
+      await sendInviteEmailLink(details.email, continueUrl);
+      setResent(true);
     } catch (err: any) {
-      setPhoneError(getErrorMessage(err, 'Invalid or expired code. Please try again.'));
+      setResendError(err?.message || 'Failed to send the verification email. Try again in a moment.');
     } finally {
-      setVerifyingOtp(false);
+      setResending(false);
     }
   };
 
@@ -157,7 +156,7 @@ const AcceptInvitation: React.FC = () => {
 
     setSubmitting(true);
     try {
-      await authService.acceptInvitation(token, username, password);
+      await authService.acceptInvitation(token, username, password, phone || undefined);
       setSuccess(true);
       setTimeout(() => navigate('/login'), 2500);
     } catch (err: any) {
@@ -203,9 +202,9 @@ const AcceptInvitation: React.FC = () => {
             mb: 3,
           }}
         >
-          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.25rem', letterSpacing: '-0.02em' }}>H</Typography>
+          <CorporateFareIcon sx={{ color: '#fff', fontSize: 26 }} />
         </Box>
-        <Typography variant="h4" sx={{ color: '#fff', fontWeight: 700, mb: 1.5, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+        <Typography variant="h4" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", color: '#fff', fontWeight: 700, mb: 1.5, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
           HRIS System
         </Typography>
         <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9375rem', lineHeight: 1.6, mb: 4 }}>
@@ -236,7 +235,7 @@ const AcceptInvitation: React.FC = () => {
           {/* Mobile logo */}
           <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1, mb: 3 }}>
             <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.875rem' }}>H</Typography>
+              <CorporateFareIcon sx={{ color: '#fff', fontSize: 18 }} />
             </Box>
             <Typography sx={{ fontWeight: 700, fontSize: '1rem' }}>HRIS System</Typography>
           </Box>
@@ -249,14 +248,14 @@ const AcceptInvitation: React.FC = () => {
               width: 48,
               height: 48,
               borderRadius: '12px',
-              bgcolor: '#EEF2FF',
+              bgcolor: '#F1F5F9',
               mb: 2.5,
             }}
           >
             <PersonAddIcon sx={{ fontSize: 24, color: 'primary.main' }} />
           </Box>
 
-          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mb: 0.5 }}>
+          <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em', mb: 0.5 }}>
             Welcome aboard
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -299,168 +298,147 @@ const AcceptInvitation: React.FC = () => {
                 </Typography>
               </Paper>
 
-              <Paper variant="outlined" sx={{ p: 2.5, mb: 3, bgcolor: '#FFFFFF' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                  <PhoneIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Verify Phone Number</Typography>
-                  {phoneVerified && <Chip icon={<CheckCircleIcon />} label="Verified" color="success" size="small" sx={{ ml: 'auto' }} />}
-                </Box>
+              {!emailVerified ? (
+                <Paper variant="outlined" sx={{ p: 2.5, mb: 3, bgcolor: '#FFFFFF' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <MarkEmailReadIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Verify your email</Typography>
+                  </Box>
 
-                {!isFirebaseConfigured() ? (
-                  <Alert severity="warning">Phone verification isn't configured yet. Contact an admin.</Alert>
-                ) : phoneVerified ? (
-                  <Typography variant="body2" color="text.secondary">{phone} is verified.</Typography>
-                ) : (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    {phoneError && <Alert severity="error" onClose={() => setPhoneError('')}>{phoneError}</Alert>}
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                  {verifying ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1 }}>
+                      <CircularProgress size={18} />
+                      <Typography variant="body2" color="text.secondary">Verifying your email…</Typography>
+                    </Box>
+                  ) : !isFirebaseConfigured() ? (
+                    <Alert severity="warning">Email verification isn't configured yet. Contact an admin.</Alert>
+                  ) : (
+                    <>
+                      {verifyError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setVerifyError('')}>{verifyError}</Alert>}
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        We sent a verification link to <strong>{details.email}</strong>. Open it on this device to
+                        continue - it'll bring you right back here and unlock the rest of setup.
+                      </Typography>
+                      {resent && <Alert severity="success" sx={{ mb: 2 }}>Verification email sent again.</Alert>}
+                      {resendError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setResendError('')}>{resendError}</Alert>}
+                      <Button variant="outlined" size="small" onClick={handleResend} disabled={resending}>
+                        {resending ? 'Sending…' : 'Resend verification email'}
+                      </Button>
+                    </>
+                  )}
+                </Paper>
+              ) : (
+                <>
+                  <Paper variant="outlined" sx={{ p: 2.5, mb: 3, bgcolor: '#FFFFFF' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                      <PhoneIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Phone Number (optional)</Typography>
+                    </Box>
+                    <TextField
+                      fullWidth
+                      label="Phone Number"
+                      placeholder="+15551234567"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      size="small"
+                      helperText="Just a contact detail - not required to sign in"
+                    />
+                  </Paper>
+
+                  {error && (
+                    <Alert severity="error" sx={{ mb: 2.5 }} onClose={() => setError('')}>
+                      {error}
+                    </Alert>
+                  )}
+
+                  <form onSubmit={handleSubmit}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <TextField
                         fullWidth
-                        label="Phone Number"
-                        placeholder="+15551234567"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        label="Username"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        required
                         size="small"
-                        disabled={otpSent}
-                        helperText="Include your country code, e.g. +1 for the US"
+                        autoFocus
+                        helperText={usernameStatus.checked ? (usernameStatus.available ? 'Available' : (usernameStatus.reason || 'Already taken')) : 'At least 3 alphanumeric characters. You can also log in with your email.'}
+                        error={usernameStatus.checked && !usernameStatus.available}
+                        slotProps={{
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <PersonAddIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                              </InputAdornment>
+                            ),
+                            endAdornment: usernameStatus.checked ? (
+                              <InputAdornment position="end">
+                                {usernameStatus.available ? <CheckCircleIcon color="success" fontSize="small" /> : <CancelIcon color="error" fontSize="small" />}
+                              </InputAdornment>
+                            ) : undefined,
+                          },
+                        }}
                       />
-                      <Button
-                        variant="outlined"
+                      <TextField
+                        fullWidth
+                        label="Password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
                         size="small"
-                        sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-                        onClick={handleSendOtp}
-                        disabled={sendingOtp || otpSent}
+                        autoComplete="new-password"
+                        helperText="At least 8 characters, with uppercase, lowercase, and a number"
+                        slotProps={{
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <LockIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                              </InputAdornment>
+                            ),
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <IconButton onClick={() => setShowPassword(!showPassword)} edge="end" size="small">
+                                  {showPassword ? <VisibilityOff sx={{ fontSize: 18 }} /> : <Visibility sx={{ fontSize: 18 }} />}
+                                </IconButton>
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                      />
+                      <TextField
+                        fullWidth
+                        label="Confirm Password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        size="small"
+                        autoComplete="new-password"
+                        slotProps={{
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <LockIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                      />
+
+                      <Button
+                        fullWidth
+                        type="submit"
+                        variant="contained"
+                        size="large"
+                        disabled={submitting}
+                        sx={{ mt: 0.5, py: 1.25, fontWeight: 600 }}
                       >
-                        {sendingOtp ? 'Sending…' : otpSent ? 'Code Sent' : 'Send Code'}
+                        {submitting ? <CircularProgress size={20} color="inherit" /> : 'Finish Setup'}
                       </Button>
                     </Box>
-                    {otpSent && (
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <TextField
-                          fullWidth
-                          label="Verification Code"
-                          value={otpCode}
-                          onChange={(e) => setOtpCode(e.target.value)}
-                          size="small"
-                        />
-                        <Button
-                          variant="contained"
-                          size="small"
-                          sx={{ flexShrink: 0 }}
-                          onClick={handleVerifyOtp}
-                          disabled={verifyingOtp || !otpCode}
-                        >
-                          {verifyingOtp ? 'Verifying…' : 'Verify'}
-                        </Button>
-                      </Box>
-                    )}
-                    {otpSent && (
-                      <Button size="small" onClick={() => { setOtpSent(false); setOtpCode(''); confirmationResultRef.current = null; }}>
-                        Use a different number
-                      </Button>
-                    )}
-                  </Box>
-                )}
-                <div id="recaptcha-container" />
-              </Paper>
-
-              {error && (
-                <Alert severity="error" sx={{ mb: 2.5 }} onClose={() => setError('')}>
-                  {error}
-                </Alert>
+                  </form>
+                </>
               )}
-
-              <form onSubmit={handleSubmit}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <TextField
-                    fullWidth
-                    label="Username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                    size="small"
-                    autoFocus
-                    helperText={usernameStatus.checked ? (usernameStatus.available ? 'Available' : (usernameStatus.reason || 'Already taken')) : 'At least 3 alphanumeric characters. You can also log in with your email.'}
-                    error={usernameStatus.checked && !usernameStatus.available}
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <PersonAddIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
-                          </InputAdornment>
-                        ),
-                        endAdornment: usernameStatus.checked ? (
-                          <InputAdornment position="end">
-                            {usernameStatus.available ? <CheckCircleIcon color="success" fontSize="small" /> : <CancelIcon color="error" fontSize="small" />}
-                          </InputAdornment>
-                        ) : undefined,
-                      },
-                    }}
-                  />
-                  <TextField
-                    fullWidth
-                    label="Password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    size="small"
-                    autoComplete="new-password"
-                    helperText="At least 8 characters, with uppercase, lowercase, and a number"
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <LockIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
-                          </InputAdornment>
-                        ),
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <IconButton onClick={() => setShowPassword(!showPassword)} edge="end" size="small">
-                              {showPassword ? <VisibilityOff sx={{ fontSize: 18 }} /> : <Visibility sx={{ fontSize: 18 }} />}
-                            </IconButton>
-                          </InputAdornment>
-                        ),
-                      },
-                    }}
-                  />
-                  <TextField
-                    fullWidth
-                    label="Confirm Password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    size="small"
-                    autoComplete="new-password"
-                    slotProps={{
-                      input: {
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <LockIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
-                          </InputAdornment>
-                        ),
-                      },
-                    }}
-                  />
-
-                  {!phoneVerified && isFirebaseConfigured() && (
-                    <Typography variant="caption" color="text.secondary">
-                      Verify your phone number above before finishing setup.
-                    </Typography>
-                  )}
-                  <Button
-                    fullWidth
-                    type="submit"
-                    variant="contained"
-                    size="large"
-                    disabled={submitting || (!phoneVerified && isFirebaseConfigured())}
-                    sx={{ mt: 0.5, py: 1.25, fontWeight: 600 }}
-                  >
-                    {submitting ? <CircularProgress size={20} color="inherit" /> : 'Finish Setup'}
-                  </Button>
-                </Box>
-              </form>
             </>
           )}
 

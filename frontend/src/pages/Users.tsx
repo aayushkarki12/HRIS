@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -23,6 +23,10 @@ import {
   DialogContent,
   DialogActions,
   Alert,
+  Autocomplete,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -30,8 +34,10 @@ import {
   CheckCircle as ActivateIcon,
   LockReset as LockResetIcon,
   ContentCopy as CopyIcon,
+  LocationOn as LocationIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
-import { userService, rbacService } from '../services/api';
+import { userService, rbacService, workLocationService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import AccessDenied from '../components/common/AccessDenied';
 
@@ -49,6 +55,8 @@ const Users: React.FC = () => {
   const [resetTarget, setResetTarget] = useState<{ id: number; username: string } | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [resultPassword, setResultPassword] = useState<string | null>(null);
+  const [sitesTarget, setSitesTarget] = useState<{ id: number; name: string } | null>(null);
+  const [siteToAdd, setSiteToAdd] = useState<{ id: number; name: string; depth: number } | null>(null);
 
   const { data: users, isLoading, refetch } = useQuery({
     queryKey: ['users', search],
@@ -60,6 +68,48 @@ const Users: React.FC = () => {
     queryKey: ['rbac-roles'],
     queryFn: () => rbacService.getRoles(),
     enabled: isAdmin,
+  });
+
+  const { data: workLocationsTree } = useQuery({
+    queryKey: ['workLocationsTree'],
+    queryFn: workLocationService.getTree,
+    enabled: isAdmin,
+  });
+  const flatSites = useMemo(() => {
+    const out: { id: number; name: string; depth: number }[] = [];
+    (workLocationsTree ?? []).forEach((loc: any) => {
+      out.push({ id: loc.id, name: loc.name, depth: 0 });
+      (loc.children ?? []).forEach((child: any) => out.push({ id: child.id, name: child.name, depth: 1 }));
+    });
+    return out;
+  }, [workLocationsTree]);
+
+  const { data: siteAssignments, isLoading: assignmentsLoading } = useQuery({
+    queryKey: ['user-site-assignments', sitesTarget?.id],
+    queryFn: () => userService.getSiteAssignments(sitesTarget!.id),
+    enabled: !!sitesTarget,
+  });
+  const activeAssignments = (siteAssignments ?? []).filter((a: any) => a.is_active);
+
+  const addSiteMutation = useMutation({
+    mutationFn: ({ userId, workLocationId }: { userId: number; workLocationId: number }) =>
+      userService.addSiteAssignment(userId, workLocationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-site-assignments', sitesTarget?.id] });
+      setSiteToAdd(null);
+      toast.success('Site assigned');
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to assign site'),
+  });
+
+  const removeSiteMutation = useMutation({
+    mutationFn: ({ userId, assignmentId }: { userId: number; assignmentId: number }) =>
+      userService.removeSiteAssignment(userId, assignmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-site-assignments', sitesTarget?.id] });
+      toast.success('Site unassigned');
+    },
+    onError: (error: any) => toast.error(error.response?.data?.detail || 'Failed to unassign site'),
   });
 
   const roleIdMutation = useMutation({
@@ -151,7 +201,7 @@ const Users: React.FC = () => {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#2c3e50' }}>Users & Roles</Typography>
+          <Typography variant="h4" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, color: '#0F172A' }}>Users & Roles</Typography>
           <Typography variant="body2" color="textSecondary">
             Manage who can access manager/admin-only features like Inventory and Audit Trail
           </Typography>
@@ -170,9 +220,9 @@ const Users: React.FC = () => {
       </Box>
 
       <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-        <Table>
+        <Table sx={{ minWidth: 650 }}>
           <TableHead>
-            <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+            <TableRow sx={{ backgroundColor: '#F1F5F9' }}>
               <TableCell><strong>Username</strong></TableCell>
               <TableCell><strong>Name</strong></TableCell>
               <TableCell><strong>Email</strong></TableCell>
@@ -187,6 +237,8 @@ const Users: React.FC = () => {
               <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="textSecondary">No users found</Typography></TableCell></TableRow>
             ) : users.map((u: any) => {
               const isSelf = u.id === currentUser?.id;
+              const userRole = (roles ?? []).find((r: any) => r.id === u.role_id);
+              const isSiteScoped = userRole?.scope === 'site';
               return (
                 <TableRow key={u.id} hover>
                   <TableCell>{u.username}</TableCell>
@@ -222,9 +274,19 @@ const Users: React.FC = () => {
                     >
                       <MenuItem value="" disabled>Unassigned</MenuItem>
                       {(roles ?? []).map((r: any) => (
-                        <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
+                        <MenuItem key={r.id} value={r.id}>{r.name}{r.scope === 'site' ? ' (site-scoped)' : ''}</MenuItem>
                       ))}
                     </Select>
+                    {isSiteScoped && (
+                      <Button
+                        size="small"
+                        startIcon={<LocationIcon fontSize="small" />}
+                        onClick={() => setSitesTarget({ id: u.id, name: `${u.first_name} ${u.last_name}` })}
+                        sx={{ display: 'block', mt: 0.5 }}
+                      >
+                        Manage Sites
+                      </Button>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Chip label={u.is_active ? 'Active' : 'Inactive'} color={u.is_active ? 'success' : 'default'} size="small" />
@@ -264,7 +326,7 @@ const Users: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPendingRoleChange(null)}>Cancel</Button>
+          <Button color="inherit" onClick={() => setPendingRoleChange(null)}>Cancel</Button>
           <Button variant="contained" color="warning" onClick={confirmRoleChange} disabled={roleMutation.isPending}>
             {roleMutation.isPending ? 'Updating...' : 'Confirm'}
           </Button>
@@ -317,7 +379,7 @@ const Users: React.FC = () => {
             <Button onClick={closeResetDialog} variant="contained">Done</Button>
           ) : (
             <>
-              <Button onClick={closeResetDialog}>Cancel</Button>
+              <Button onClick={closeResetDialog} color="inherit">Cancel</Button>
               <Button
                 variant="contained"
                 color="warning"
@@ -328,6 +390,60 @@ const Users: React.FC = () => {
               </Button>
             </>
           )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!sitesTarget} onClose={() => { setSitesTarget(null); setSiteToAdd(null); }} maxWidth="xs" fullWidth>
+        <DialogTitle>Manage Sites{sitesTarget ? ` - ${sitesTarget.name}` : ''}</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            This role only sees employees and attendance at the site(s) assigned here.
+          </Alert>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <Autocomplete
+              fullWidth
+              size="small"
+              options={flatSites.filter((s) => !activeAssignments.some((a: any) => a.work_location_id === s.id))}
+              getOptionLabel={(s) => `${'    '.repeat(s.depth)}${s.name}`}
+              value={siteToAdd}
+              onChange={(_, value) => setSiteToAdd(value)}
+              renderInput={(params) => <TextField {...params} label="Add a site" />}
+            />
+            <Button
+              variant="contained"
+              disabled={!siteToAdd || !sitesTarget || addSiteMutation.isPending}
+              onClick={() => siteToAdd && sitesTarget && addSiteMutation.mutate({ userId: sitesTarget.id, workLocationId: siteToAdd.id })}
+            >
+              Add
+            </Button>
+          </Box>
+          {assignmentsLoading ? (
+            <CircularProgress size={20} />
+          ) : activeAssignments.length === 0 ? (
+            <Typography variant="body2" color="textSecondary">No sites assigned yet - this user sees nothing until at least one is added.</Typography>
+          ) : (
+            <List dense>
+              {activeAssignments.map((a: any) => (
+                <ListItem
+                  key={a.id}
+                  secondaryAction={
+                    <IconButton
+                      edge="end" size="small" color="error"
+                      disabled={removeSiteMutation.isPending}
+                      onClick={() => sitesTarget && removeSiteMutation.mutate({ userId: sitesTarget.id, assignmentId: a.id })}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  }
+                >
+                  <ListItemText primary={a.work_location_name ?? `Location #${a.work_location_id}`} />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setSitesTarget(null); setSiteToAdd(null); }}>Done</Button>
         </DialogActions>
       </Dialog>
     </Box>

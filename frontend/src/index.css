@@ -40,7 +40,7 @@ textarea {
 
 /* Better focus outline for keyboard users */
 :focus-visible {
-  outline: 2px solid #4F46E5;
+  outline: 2px solid #0F172A;
   outline-offset: 2px;
 }
 

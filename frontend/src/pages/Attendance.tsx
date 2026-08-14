@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Box, Paper, Typography, Button, Card, CardContent,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Chip, Skeleton, Alert, TextField,
+  Chip, Skeleton, Alert, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip, IconButton,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -12,6 +12,8 @@ import {
   Logout as LogoutIcon,
   MyLocation as MyLocationIcon,
   LocationOn as LocationIcon,
+  GpsFixed as TrackingIcon,
+  MoreTime as MoreTimeIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { attendanceService, getErrorMessage } from '../services/api';
@@ -39,6 +41,12 @@ const LOC_COLOR: Record<string, 'success' | 'primary' | 'warning' | 'default'> =
 
 const getStatus = (s: string) => STATUS_MAP[s] ?? { label: 'Unknown', color: 'default' };
 
+// How often the browser tab reports a fresh location fix while clocked in.
+// The backend treats a device offline after 35 minutes of silence (see
+// OFFLINE_AFTER_MINUTES in attendance.py), so this stays comfortably under
+// that while not hammering the GPS/network every few seconds.
+const PING_INTERVAL_MS = 5 * 60_000;
+
 const StatCard: React.FC<{ label: string; children: React.ReactNode; index: number }> = ({ label, children, index }) => (
   <motion.div custom={index} variants={fadeUp} initial="hidden" animate="visible">
     <Card sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none', height: '100%' }}>
@@ -61,6 +69,9 @@ const Attendance: React.FC = () => {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<string>('');
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [trackingActive, setTrackingActive] = useState(false);
+  const [fixTarget, setFixTarget] = useState<any>(null);
+  const [fixTime, setFixTime] = useState('');
 
   const { data: attendance = [], isLoading, refetch } = useQuery({
     queryKey: ['attendance', startDate, endDate],
@@ -117,8 +128,57 @@ const Attendance: React.FC = () => {
     onError: (e: any) => toast.error(getErrorMessage(e, 'Failed to clock out')),
   });
 
+  const fixClockOutMutation = useMutation({
+    mutationFn: () => attendanceService.fixClockOut(fixTarget.id, new Date(fixTime).toISOString()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['attendanceStats'] });
+      toast.success(`Clocked out — ${data.total_hours}h worked`);
+      setFixTarget(null);
+      setFixTime('');
+    },
+    onError: (e: any) => toast.error(getErrorMessage(e, 'Failed to clock out')),
+  });
+
   const today = (attendance as any[]).find((a: any) => a.date === new Date().toISOString().split('T')[0]);
   const isClockedIn = today?.clock_in && !today?.clock_out;
+
+  // Privacy rule: location is only ever reported while a work session is
+  // open. The interval is created when clock-in flips isClockedIn to true
+  // and torn down the moment it flips back (clock-out or unmount) - there is
+  // no path that keeps this running for an employee who isn't working.
+  useEffect(() => {
+    if (!isClockedIn) {
+      setTrackingActive(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const pingOnce = () => {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (cancelled) return;
+          attendanceService
+            .submitLocationPings([{
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+              recorded_at: new Date().toISOString(),
+            }])
+            .then(() => { if (!cancelled) setTrackingActive(true); })
+            .catch(() => { if (!cancelled) setTrackingActive(false); });
+        },
+        () => { if (!cancelled) setTrackingActive(false); },
+        { enableHighAccuracy: true, timeout: 10000 },
+      );
+    };
+
+    pingOnce();
+    const interval = window.setInterval(pingOnce, PING_INTERVAL_MS);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [isClockedIn]);
 
   const todayStatusText = today
     ? today.clock_in && today.clock_out
@@ -135,7 +195,7 @@ const Attendance: React.FC = () => {
       <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Attendance</Typography>
+            <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Attendance</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Track your daily attendance with location verification</Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
@@ -200,7 +260,7 @@ const Attendance: React.FC = () => {
       {/* Clock actions */}
       <motion.div custom={5} variants={fadeUp} initial="hidden" animate="visible">
         <Box sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider', bgcolor: '#fff', mb: 3, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Button variant="contained" size="small" startIcon={<LoginIcon />}
+          <Button variant="contained" color="success" size="small" startIcon={<LoginIcon />}
             onClick={() => clockInMutation.mutate()}
             disabled={!!today?.clock_in || clockInMutation.isPending}>
             {clockInMutation.isPending ? 'Clocking in…' : 'Clock In'}
@@ -210,6 +270,15 @@ const Attendance: React.FC = () => {
             disabled={!today?.clock_in || !!today?.clock_out || clockOutMutation.isPending}>
             {clockOutMutation.isPending ? 'Clocking out…' : 'Clock Out'}
           </Button>
+          {isClockedIn && (
+            <Chip
+              size="small"
+              icon={<TrackingIcon />}
+              label={trackingActive ? 'Location Tracking Active' : 'Tracking…'}
+              color={trackingActive ? 'success' : 'default'}
+              variant="outlined"
+            />
+          )}
         </Box>
       </motion.div>
 
@@ -223,7 +292,7 @@ const Attendance: React.FC = () => {
 
       {/* Attendance table */}
       <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
-        <Table size="small">
+        <Table sx={{ minWidth: 600 }} size="small">
           <TableHead>
             <TableRow sx={{ bgcolor: '#F8FAFC' }}>
               {['Date', 'Clock In', 'Clock Out', 'Hours', 'Status', 'Location'].map(h => (
@@ -249,7 +318,26 @@ const Attendance: React.FC = () => {
                     <TableRow key={record.id} hover sx={{ '&:last-child td': { border: 0 } }}>
                       <TableCell sx={{ fontWeight: 500 }}>{new Date(record.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</TableCell>
                       <TableCell>{record.clock_in ? new Date(record.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</TableCell>
-                      <TableCell>{record.clock_out ? new Date(record.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}</TableCell>
+                      <TableCell>
+                        {record.clock_out
+                          ? new Date(record.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : record.clock_in
+                            ? (
+                              <Tooltip title="Forgot to clock out — fix it">
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <Typography variant="body2" color="text.secondary">—</Typography>
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={() => { setFixTarget(record); setFixTime(`${record.date}T18:00`); }}
+                                  >
+                                    <MoreTimeIcon sx={{ fontSize: 16 }} />
+                                  </IconButton>
+                                </Box>
+                              </Tooltip>
+                            )
+                            : '—'}
+                      </TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>{record.total_hours?.toFixed(2) ?? '0.00'}h</TableCell>
                       <TableCell><Chip label={s.label} color={s.color} size="small" /></TableCell>
                       <TableCell>
@@ -274,6 +362,34 @@ const Attendance: React.FC = () => {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Dialog open={!!fixTarget} onClose={() => setFixTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>Clock Out</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {fixTarget && `Clocked in ${new Date(fixTarget.clock_in).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}. When did you actually leave?`}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Clock Out Time"
+            type="datetime-local"
+            value={fixTime}
+            onChange={(e) => setFixTime(e.target.value)}
+            size="small"
+            slotProps={{ inputLabel: { shrink: true } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setFixTarget(null)} color="inherit">Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!fixTime || fixClockOutMutation.isPending}
+            onClick={() => fixClockOutMutation.mutate()}
+          >
+            {fixClockOutMutation.isPending ? 'Saving…' : 'Clock Out'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

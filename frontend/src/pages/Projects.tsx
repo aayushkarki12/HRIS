@@ -28,7 +28,7 @@ import {
   PersonRemove as PersonRemoveIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
-import { projectService, employeeService, getErrorMessage } from '../services/api';
+import { projectService, employeeService, userService, rbacService, getErrorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import EmptyState from '../components/common/EmptyState';
 
@@ -45,6 +45,7 @@ const projectSchema = z.object({
   end_date: z.string().optional(),
   budget: z.number().min(0),
   progress: z.number().min(0).max(100),
+  site_manager_user_id: z.string().optional(),
 });
 
 type ProjectFormData = z.infer<typeof projectSchema>;
@@ -78,6 +79,24 @@ const Projects: React.FC = () => {
     queryFn: () => employeeService.getAll(),
     enabled: !!isAdmin,
   });
+
+  const { data: users = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => userService.getAll(),
+    enabled: !!isAdmin,
+  });
+
+  const { data: roles = [] } = useQuery({
+    queryKey: ['rbac-roles'],
+    queryFn: () => rbacService.getRoles(),
+    enabled: !!isAdmin,
+  });
+
+  // Only users holding a site-scoped role (e.g. "Site Manager") make sense
+  // here - picking one wires up UserSiteAssignment automatically as sites
+  // are attached to the project (see POST /projects/{id}/work-locations).
+  const siteScopedRoleIds = new Set((roles as any[]).filter((r) => r.scope === 'site').map((r) => r.id));
+  const siteManagerCandidates = (users as any[]).filter((u) => siteScopedRoleIds.has(u.role_id));
 
   const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
     queryKey: ['project-members', teamProjectId],
@@ -117,7 +136,7 @@ const Projects: React.FC = () => {
 
   const { register, handleSubmit, reset, setValue, control, formState: { errors, isSubmitting } } = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
-    defaultValues: { progress: 0, status: 'active' },
+    defaultValues: { progress: 0, status: 'active', site_manager_user_id: '' },
   });
 
   const createMutation = useMutation({
@@ -146,7 +165,7 @@ const Projects: React.FC = () => {
     onError: (e: any) => toast.error(getErrorMessage(e, 'Failed to delete project')),
   });
 
-  const closeModal = () => { setIsModalOpen(false); reset({ progress: 0, status: 'active' }); setEditingId(null); setFormError(''); };
+  const closeModal = () => { setIsModalOpen(false); reset({ progress: 0, status: 'active', site_manager_user_id: '' }); setEditingId(null); setFormError(''); };
 
   const handleEdit = (p: any) => {
     setEditingId(p.id);
@@ -157,14 +176,17 @@ const Projects: React.FC = () => {
     setValue('end_date', p.end_date ? p.end_date.split('T')[0] : '');
     setValue('budget', p.budget ?? 0);
     setValue('progress', p.progress ?? 0);
+    setValue('site_manager_user_id', p.site_manager_user_id ? String(p.site_manager_user_id) : '');
     setFormError('');
     setIsModalOpen(true);
   };
 
   const onSubmit = (data: ProjectFormData) => {
     setFormError('');
-    if (editingId) updateMutation.mutate({ id: editingId, data });
-    else createMutation.mutate(data);
+    const { site_manager_user_id, ...rest } = data;
+    const payload = { ...rest, site_manager_user_id: site_manager_user_id ? Number(site_manager_user_id) : null };
+    if (editingId) updateMutation.mutate({ id: editingId, data: payload });
+    else createMutation.mutate(payload);
   };
 
   const statusCounts = {
@@ -180,7 +202,7 @@ const Projects: React.FC = () => {
       <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>Projects</Typography>
+            <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Projects</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Track project progress and manage your team's work</Typography>
           </Box>
           {isAdmin && (
@@ -215,7 +237,7 @@ const Projects: React.FC = () => {
       ) : (projects as any[]).length === 0 ? (
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <EmptyState
-            icon={<FolderIcon sx={{ fontSize: 48, color: '#C7D2FE' }} />}
+            icon={<FolderIcon sx={{ fontSize: 48, color: '#CBD5E1' }} />}
             title="No projects yet"
             description="Create your first project to start tracking work and progress."
             action={isAdmin ? { label: 'New Project', onClick: () => setIsModalOpen(true) } : undefined}
@@ -262,13 +284,22 @@ const Projects: React.FC = () => {
                       </Typography>
                     </Box>
 
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: project.site_manager_name ? 0.75 : 2 }}>
                       <CalendarIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                       <Typography variant="caption" color="text.secondary">
                         {new Date(project.start_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                         {project.end_date && ` → ${new Date(project.end_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`}
                       </Typography>
                     </Box>
+
+                    {project.site_manager_name && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 2 }}>
+                        <GroupIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                        <Typography variant="caption" color="text.secondary">
+                          Site Manager: {project.site_manager_name}
+                        </Typography>
+                      </Box>
+                    )}
 
                     {/* Progress */}
                     <Box>
@@ -328,6 +359,16 @@ const Projects: React.FC = () => {
             <TextField fullWidth label="Start Date *" type="date" {...register('start_date')} error={!!errors.start_date} helperText={errors.start_date?.message} margin="normal" size="small" slotProps={{ inputLabel: { shrink: true } }} />
             <TextField fullWidth label="End Date" type="date" {...register('end_date')} margin="normal" size="small" slotProps={{ inputLabel: { shrink: true } }} />
             <TextField fullWidth label="Budget *" type="number" {...register('budget', { valueAsNumber: true })} error={!!errors.budget} helperText={errors.budget?.message} margin="normal" size="small" />
+            <TextField
+              fullWidth select label="Site Manager (optional)"
+              {...register('site_manager_user_id')} margin="normal" size="small"
+              helperText="Only users holding a site-scoped role appear here"
+            >
+              <MenuItem value="">None</MenuItem>
+              {siteManagerCandidates.map((u: any) => (
+                <MenuItem key={u.id} value={String(u.id)}>{u.first_name} {u.last_name}</MenuItem>
+              ))}
+            </TextField>
 
             {/* Progress slider */}
             <Box sx={{ mt: 2, mb: 1 }}>
@@ -354,7 +395,7 @@ const Projects: React.FC = () => {
             </Box>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={closeModal} size="small">Cancel</Button>
+            <Button onClick={closeModal} size="small" color="inherit">Cancel</Button>
             <Button type="submit" variant="contained" size="small" disabled={isSubmitting || createMutation.isPending || updateMutation.isPending}>
               {(isSubmitting || createMutation.isPending || updateMutation.isPending) ? 'Saving…' : 'Save'}
             </Button>

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Card, CardContent, Typography, Divider, Skeleton,
   Alert, LinearProgress, Chip, List, ListItem, ListItemText, ListItemIcon, Button,
-  Dialog, DialogTitle, DialogContent,
+  Dialog, DialogTitle, DialogContent, Tabs, Tab,
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -30,11 +30,13 @@ import { motion } from 'framer-motion';
 import {
   PieChart, Pie, Cell, Tooltip as ReTooltip,
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area,
 } from 'recharts';
 import {
   employeeService, resourceService, projectService, assignmentService,
   leaveService, attendanceService, auditLogService, getErrorMessage,
 } from '../services/api';
+import { alpha } from '@mui/material/styles';
 import { useAuth } from '../context/AuthContext';
 
 const fadeUp = {
@@ -45,9 +47,11 @@ const fadeUp = {
   }),
 };
 
+const SERIF = "Georgia, 'Times New Roman', Times, serif";
+
 // ─── Shared building blocks ───────────────────────────────────────────────────
 const StatCardSkeleton: React.FC = () => (
-  <Card sx={{ borderRadius: 2 }}>
+  <Card sx={{ height: '100%', borderRadius: 2 }}>
     <CardContent>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box sx={{ flex: 1 }}>
@@ -82,33 +86,51 @@ const ChartPanel: React.FC<{ title: string; subtitle?: string; children: React.R
   ({ title, subtitle, children, index, minHeight = 220 }) => (
     <motion.div custom={index} variants={fadeUp} initial="hidden" animate="visible" style={{ height: '100%' }}>
       <Box sx={{
-        p: 2.5, borderRadius: 2, border: '1px solid', borderColor: 'divider',
-        boxShadow: 'none', bgcolor: '#fff', height: '100%', display: 'flex', flexDirection: 'column',
+        p: 2.5, borderRadius: 3, border: 'none',
+        boxShadow: '0 1px 3px rgba(15,23,42,0.06)', bgcolor: '#fff', height: '100%', display: 'flex', flexDirection: 'column',
       }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.25 }}>{title}</Typography>
-        {subtitle && <Typography variant="caption" color="text.secondary" sx={{ mb: 2 }}>{subtitle}</Typography>}
-        {!subtitle && <Box sx={{ mb: 2 }} />}
+        <Typography sx={{ fontFamily: SERIF, fontWeight: 700, fontSize: '1.0625rem', color: '#0F172A', mb: subtitle ? 0.25 : 0 }}>{title}</Typography>
+        {subtitle && <Typography variant="caption" color="text.secondary">{subtitle}</Typography>}
+        <Divider sx={{ mt: 1.5, mb: 2 }} />
         <Box sx={{ flex: 1, minHeight }}>{children}</Box>
       </Box>
     </motion.div>
   );
+
+const LegendRow: React.FC<{ color: string; label: string; value: number; max: number }> = ({ color, label, value, max }) => (
+  <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1, mb: 1, '&:last-child': { mb: 0 } }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: color, flexShrink: 0 }} />
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>{label}</Typography>
+      </Box>
+      <Typography variant="body2" sx={{ fontWeight: 700 }}>{value}</Typography>
+    </Box>
+    <LinearProgress
+      variant="determinate"
+      value={max > 0 ? (value / max) * 100 : 0}
+      sx={{ height: 4, borderRadius: 2, bgcolor: '#F1F5F9', '& .MuiLinearProgress-bar': { bgcolor: color } }}
+    />
+  </Box>
+);
 
 const StatCard: React.FC<{ title: string; value: number | string; subtitle?: string; trend?: string; icon: any; color: string; bgColor: string; index: number; path?: string; onClick?: () => void }> =
   ({ title, value, subtitle, trend, icon: Icon, color, bgColor, index, path, onClick }) => {
     const navigate = useNavigate();
     const handleClick = onClick ?? (path ? () => navigate(path) : undefined);
     return (
-    <motion.div custom={index} variants={fadeUp} initial="hidden" animate="visible">
+    <motion.div custom={index} variants={fadeUp} initial="hidden" animate="visible" style={{ height: '100%' }}>
       <Card
         onClick={handleClick}
         sx={{
+          height: '100%', display: 'flex', flexDirection: 'column',
           borderRadius: 2, border: '1px solid', borderColor: 'divider', boxShadow: 'none',
           transition: 'box-shadow 0.15s, transform 0.15s',
           cursor: handleClick ? 'pointer' : 'default',
           '&:hover': handleClick ? { boxShadow: 3, transform: 'translateY(-2px)', borderColor: 'primary.main' } : { boxShadow: 3, transform: 'translateY(-2px)' },
         }}
       >
-        <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+        <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 }, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <Box>
               <Typography variant="caption" sx={{
@@ -155,8 +177,8 @@ const ACTIVITY_ICONS: Record<string, any> = {
 const ACTIVITY_COLORS: Record<string, string> = {
   approve: '#16A34A', manager_approve: '#16A34A', accounting_approve: '#16A34A',
   reject: '#DC2626', cancel: '#DC2626', deactivate: '#DC2626',
-  create: '#4F46E5', process: '#4F46E5', post: '#4F46E5',
-  pay: '#16A34A', record_payment: '#16A34A', send: '#0891B2', check_in: '#0891B2',
+  create: '#334155', process: '#334155', post: '#334155',
+  pay: '#16A34A', record_payment: '#16A34A', send: '#64748B', check_in: '#64748B',
 };
 
 const activityLabel = (log: any): string => {
@@ -217,10 +239,62 @@ const RecentActivity: React.FC<{ index: number }> = ({ index }) => {
   );
 };
 
+// ─── Activity trend (last 14 days) ────────────────────────────────────────────
+const ActivityTrend: React.FC<{ index: number }> = ({ index }) => {
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - 13);
+
+  const { data: logs = [], isLoading } = useQuery({
+    queryKey: ['audit-logs', 'trend', fmt(startDate), fmt(endDate)],
+    queryFn: () => auditLogService.getAll({ start_date: fmt(startDate), end_date: fmt(endDate), limit: 1000 }),
+    retry: 1,
+  });
+
+  const trendData = useMemo(() => {
+    const days: { date: string; label: string; count: number }[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      const key = fmt(d);
+      days.push({ date: key, label: key.slice(5), count: 0 });
+    }
+    const byDate = new Map(days.map(d => [d.date, d]));
+    (logs as any[]).forEach((log: any) => {
+      const bucket = byDate.get((log.created_at || '').slice(0, 10));
+      if (bucket) bucket.count += 1;
+    });
+    return days;
+  }, [logs]);
+
+  return (
+    <ChartPanel title="Activity Trend" subtitle="Last 14 days" index={index} minHeight={190}>
+      {isLoading ? <Skeleton height={180} /> : (
+        <ResponsiveContainer width="100%" height={190}>
+          <AreaChart data={trendData} margin={{ left: -20, right: 8, top: 8, bottom: 0 }}>
+            <defs>
+              <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#0F172A" stopOpacity={0.22} />
+                <stop offset="95%" stopColor="#0F172A" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+            <ReTooltip content={<ChartTooltip />} />
+            <Area type="monotone" dataKey="count" name="Actions" stroke="#0F172A" strokeWidth={2} fill="url(#activityGradient)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
+    </ChartPanel>
+  );
+};
+
 // ─── Admin / manager dashboard ────────────────────────────────────────────────
 const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName }) => {
   const { data: employees = [], isLoading: empLoading, error: empError } =
-    useQuery({ queryKey: ['employees'], queryFn: employeeService.getAll, retry: 1 });
+    useQuery({ queryKey: ['employees'], queryFn: () => employeeService.getAll(), retry: 1 });
 
   const { data: resources = [], isLoading: resLoading } =
     useQuery({ queryKey: ['resources'], queryFn: resourceService.getAll, retry: 1 });
@@ -244,7 +318,17 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
     queryKey: ['attendance', 'today-overview'], queryFn: attendanceService.getTodayOverview, retry: 1,
   });
 
+  // Separate from attendanceOverview on purpose - today-overview is scoped
+  // to Attendance.date === today, which misses a shift that started
+  // yesterday and is still open (no fixed clock-out time here, shifts can
+  // run past midnight).
+  const { data: longShifts, isLoading: longShiftsLoading } = useQuery({
+    queryKey: ['attendance', 'long-shifts'], queryFn: attendanceService.getLongShifts, retry: 1,
+    refetchInterval: 5 * 60 * 1000,
+  });
+
   const isLoading = empLoading || resLoading || projLoading || assignLoading || leaveLoading || reqLoading || attLoading;
+  const longShiftEmployees = longShifts?.employees ?? [];
 
   const totalEmployees   = employees.length;
   const activeEmployees  = employees.filter((e: any) => e.is_active).length;
@@ -288,11 +372,16 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
     { name: 'Cancelled', count: projects.filter((p: any) => p.status === 'cancelled').length, fill: '#94A3B8' },
   ].filter(d => d.count > 0);
 
-  const checkedIn = attendanceOverview?.checked_in ?? 0;
   const totalActive = attendanceOverview?.total_active_employees ?? 0;
+  const checkedInNow = attendanceOverview?.checked_in_now ?? 0;
+  const checkedOutCount = attendanceOverview?.checked_out ?? 0;
+  const notCheckedInCount = attendanceOverview?.not_checked_in ?? 0;
   const checkedInEmployees = attendanceOverview?.checked_in_employees ?? [];
+  const checkedOutEmployees = attendanceOverview?.checked_out_employees ?? [];
+  const notCheckedInEmployees = attendanceOverview?.not_checked_in_employees ?? [];
   const missedShiftEmployees = attendanceOverview?.missed_shift_employees ?? [];
   const [onlineDialogOpen, setOnlineDialogOpen] = useState(false);
+  const [attendanceTab, setAttendanceTab] = useState<'online' | 'checked_out' | 'not_checked_in'>('online');
 
   const now = new Date();
   const newEmployeesThisMonth = (employees as any[]).filter((e: any) => {
@@ -305,11 +394,11 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
   }).length;
 
   const stats = [
-    { title: 'Total Employees', value: totalEmployees, icon: PeopleIcon, color: '#4F46E5', bgColor: '#EEF2FF', subtitle: `${activeEmployees} active`, trend: newEmployeesThisMonth > 0 ? `+${newEmployeesThisMonth} this month` : undefined, path: '/employees' },
+    { title: 'Total Employees', value: totalEmployees, icon: PeopleIcon, color: '#334155', bgColor: '#F1F5F9', subtitle: `${activeEmployees} active`, trend: newEmployeesThisMonth > 0 ? `+${newEmployeesThisMonth} this month` : undefined, path: '/employees' },
     { title: 'Pending Leave Requests', value: pendingLeaves.length, icon: LeaveIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: 'Awaiting your decision', path: '/leaves' },
-    { title: 'Pending Resource Requests', value: pendingResourceRequests.length, icon: ResourceRequestIcon, color: '#DC2626', bgColor: '#FEF2F2', subtitle: 'Awaiting your decision', path: '/resources' },
-    { title: "Today's Attendance", value: `${checkedIn}/${totalActive}`, icon: AttendanceIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: `${attendanceOverview?.absent ?? 0} not checked in - click to see who's online`, onClick: () => setOnlineDialogOpen(true) },
-    { title: 'Total Resources', value: totalResources, icon: ComputerIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: `${availableRes} available`, path: '/resources' },
+    { title: 'Pending Resource Requests', value: pendingResourceRequests.length, icon: ResourceRequestIcon, color: '#DC2626', bgColor: '#FEF2F2', subtitle: 'Awaiting your decision', path: '/resources?tab=requests' },
+    { title: "Today's Attendance", value: `${checkedInNow}/${totalActive}`, icon: AttendanceIcon, color: '#64748B', bgColor: '#F1F5F9', subtitle: `${checkedInNow} online · ${checkedOutCount} checked out · ${notCheckedInCount} not in yet`, onClick: () => { setAttendanceTab('online'); setOnlineDialogOpen(true); } },
+    { title: 'Total Resources', value: totalResources, icon: ComputerIcon, color: '#64748B', bgColor: '#F1F5F9', subtitle: `${availableRes} available`, path: '/resources' },
     { title: 'Active Projects', value: activeProjects, icon: FolderIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: `${completedProjects} completed`, trend: newProjectsThisMonth > 0 ? `+${newProjectsThisMonth} this month` : undefined, path: '/projects' },
     { title: 'Active Assignments', value: activeAssignments, icon: AssignmentIcon, color: '#16A34A', bgColor: '#F0FDF4', subtitle: 'Currently allocated', path: '/assignments' },
   ];
@@ -322,7 +411,7 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
     <Box>
       <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible">
         <Box sx={{ mb: 3 }}>
-          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+          <Typography variant="h5" sx={{ fontFamily: SERIF, fontWeight: 700, letterSpacing: '-0.01em' }}>
             Welcome back, {userFirstName}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -356,6 +445,28 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
         </Alert>
       )}
 
+      {/* People still clocked in past the long-shift threshold - a soft
+          heads-up, not an alarm: this office has no fixed clock-out time and
+          shifts can legitimately run 24h+, so this is just visibility for a
+          manager to check in on, not something to act on automatically. */}
+      {!longShiftsLoading && longShiftEmployees.length > 0 && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+            {longShiftEmployees.length} employee{longShiftEmployees.length > 1 ? 's' : ''} clocked in for a long stretch
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+            {longShiftEmployees.map((e: any) => (
+              <Chip key={e.id} size="small" label={`${e.name} · ${e.hours_elapsed}h`} />
+            ))}
+          </Box>
+        </Alert>
+      )}
+
+      {/* Activity trend */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 2, mb: 2 }}>
+        <ActivityTrend index={8} />
+      </Box>
+
       {/* Charts row 1 */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr' }, gap: 2, mb: 2 }}>
         <ChartPanel title="Employee Status" subtitle="Active vs. inactive" index={9} minHeight={180}>
@@ -377,13 +488,7 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
                 <Typography variant="caption" color="text.secondary">Active rate</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 {empStatusData.map(d => (
-                  <Box key={d.name} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: d.color }} />
-                      <Typography variant="caption" color="text.secondary">{d.name}</Typography>
-                    </Box>
-                    <Typography variant="caption" sx={{ fontWeight: 600 }}>{d.value}</Typography>
-                  </Box>
+                  <LegendRow key={d.name} color={d.color} label={d.name} value={d.value} max={Math.max(...empStatusData.map(x => x.value), 1)} />
                 ))}
               </Box>
             </Box>
@@ -430,24 +535,8 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
                 <Typography variant="caption" color="text.secondary">Utilisation rate</Typography>
                 <Divider sx={{ my: 1.5 }} />
                 {resStatusData.map(d => (
-                  <Box key={d.name} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: d.color }} />
-                      <Typography variant="caption" color="text.secondary">{d.name}</Typography>
-                    </Box>
-                    <Typography variant="caption" sx={{ fontWeight: 600 }}>{d.value}</Typography>
-                  </Box>
+                  <LegendRow key={d.name} color={d.color} label={d.name} value={d.value} max={Math.max(...resStatusData.map(x => x.value), 1)} />
                 ))}
-                {totalResources > 0 && (
-                  <>
-                    <Divider sx={{ my: 1 }} />
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.round((assignedRes / totalResources) * 100)}
-                      sx={{ height: 4, borderRadius: 2, bgcolor: '#EEF2FF', '& .MuiLinearProgress-bar': { bgcolor: '#4F46E5' } }}
-                    />
-                  </>
-                )}
               </Box>
             </Box>
           )}
@@ -455,17 +544,30 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
 
         <ChartPanel title="Project Pipeline" subtitle={`${totalProjects} total projects`} index={12} minHeight={180}>
           {isLoading ? <Skeleton height={160} /> : projStatusData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={170}>
-              <BarChart data={projStatusData} margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <ReTooltip content={<ChartTooltip />} cursor={{ fill: '#F8FAFC' }} />
-                <Bar dataKey="count" name="Projects" radius={[4, 4, 0, 0]} maxBarSize={48}>
-                  {projStatusData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <Box>
+              <Box sx={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', mb: 2 }}>
+                {projStatusData.map((d, i) => (
+                  <Box key={i} sx={{ width: `${totalProjects > 0 ? (d.count / totalProjects) * 100 : 0}%`, bgcolor: d.fill }} />
+                ))}
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1 }}>
+                {projStatusData.map(d => {
+                  const pct = totalProjects > 0 ? Math.round((d.count / totalProjects) * 100) : 0;
+                  return (
+                    <Box key={d.name} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1.25 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                        <Chip label={d.name} size="small" sx={{ bgcolor: alpha(d.fill, 0.12), color: d.fill, fontWeight: 600, height: 20, fontSize: '0.6875rem' }} />
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{d.count}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="caption" color="text.secondary">{d.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{pct}%</Typography>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
           ) : (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160 }}>
               <Box sx={{ textAlign: 'center' }}>
@@ -495,11 +597,11 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
               ))}
             </List>
           ) : (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <CheckCircleIcon sx={{ fontSize: 36, color: '#BBF7D0', mb: 1 }} />
-                <Typography variant="body2" color="text.secondary">Nothing pending</Typography>
-              </Box>
+            <Box sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160,
+              border: '2px dashed', borderColor: 'divider', borderRadius: 2,
+            }}>
+              <Typography variant="body2" color="text.secondary">All clear — no leave requests waiting on you.</Typography>
             </Box>
           )}
         </ChartPanel>
@@ -520,11 +622,11 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
               ))}
             </List>
           ) : (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <CheckCircleIcon sx={{ fontSize: 36, color: '#BBF7D0', mb: 1 }} />
-                <Typography variant="body2" color="text.secondary">Nothing pending</Typography>
-              </Box>
+            <Box sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160,
+              border: '2px dashed', borderColor: 'divider', borderRadius: 2,
+            }}>
+              <Typography variant="body2" color="text.secondary">All clear — no resource requests waiting on you.</Typography>
             </Box>
           )}
         </ChartPanel>
@@ -535,27 +637,65 @@ const AdminDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName })
         <RecentActivity index={15} />
       </Box>
 
-      {/* Who's online (clocked in) right now */}
+      {/* Today's attendance breakdown: online / checked out / not checked in yet */}
       <Dialog open={onlineDialogOpen} onClose={() => setOnlineDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Online Now ({checkedInEmployees.length})</DialogTitle>
+        <DialogTitle sx={{ pb: 0 }}>Today's Attendance</DialogTitle>
+        <Tabs
+          value={attendanceTab}
+          onChange={(_, v) => setAttendanceTab(v)}
+          variant="fullWidth"
+          sx={{ px: 2, borderBottom: '1px solid', borderColor: 'divider' }}
+        >
+          <Tab value="online" label={`Online (${checkedInEmployees.length})`} sx={{ fontSize: '0.75rem', minHeight: 40 }} />
+          <Tab value="checked_out" label={`Checked Out (${checkedOutEmployees.length})`} sx={{ fontSize: '0.75rem', minHeight: 40 }} />
+          <Tab value="not_checked_in" label={`Not In (${notCheckedInEmployees.length})`} sx={{ fontSize: '0.75rem', minHeight: 40 }} />
+        </Tabs>
         <DialogContent dividers sx={{ p: 0 }}>
-          {checkedInEmployees.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>No one is clocked in right now.</Typography>
-          ) : (
-            <List dense disablePadding>
-              {checkedInEmployees.map((e: any) => (
-                <ListItem key={e.id} sx={{ py: 1 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}><CircleIcon sx={{ fontSize: 10, color: '#16A34A' }} /></ListItemIcon>
-                  <ListItemText
-                    primary={e.name}
-                    secondary={`${e.position || ''}${e.department ? ` · ${e.department}` : ''} · ${e.attendance_type}${e.clock_in ? ` · since ${new Date(e.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`}
-                    primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600 }}
-                    secondaryTypographyProps={{ fontSize: '0.75rem' }}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
+          {(() => {
+            const rows =
+              attendanceTab === 'online' ? checkedInEmployees :
+              attendanceTab === 'checked_out' ? checkedOutEmployees :
+              notCheckedInEmployees;
+            const emptyMessage =
+              attendanceTab === 'online' ? 'No one is clocked in right now.' :
+              attendanceTab === 'checked_out' ? 'No one has checked out yet today.' :
+              'Everyone has checked in today.';
+            const dotColor =
+              attendanceTab === 'online' ? '#16A34A' :
+              attendanceTab === 'checked_out' ? '#64748B' :
+              '#DC2626';
+
+            if (rows.length === 0) {
+              return <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>{emptyMessage}</Typography>;
+            }
+            return (
+              <List dense disablePadding>
+                {rows.map((e: any) => {
+                  const timing =
+                    attendanceTab === 'checked_out' && e.clock_out
+                      ? `left ${new Date(e.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : attendanceTab !== 'not_checked_in' && e.clock_in
+                        ? `since ${new Date(e.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        : e.fixed_clock_in_time
+                          ? `shift starts ${e.fixed_clock_in_time}`
+                          : null;
+                  return (
+                    <ListItem key={e.id} sx={{ py: 1 }}>
+                      <ListItemIcon sx={{ minWidth: 32 }}><CircleIcon sx={{ fontSize: 10, color: dotColor }} /></ListItemIcon>
+                      <ListItemText
+                        primary={e.name}
+                        secondary={`${e.position || ''}${e.department ? ` · ${e.department}` : ''} · ${e.attendance_type}${timing ? ` · ${timing}` : ''}`}
+                        slotProps={{
+                          primary: { fontSize: '0.875rem', fontWeight: 600 },
+                          secondary: { fontSize: '0.75rem' },
+                        }}
+                      />
+                    </ListItem>
+                  );
+                })}
+              </List>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </Box>
@@ -594,14 +734,14 @@ const ApprovalsWidgets: React.FC<{ startIndex: number }> = ({ startIndex }) => {
 
   const stats = [
     canApproveLeave && { title: 'Pending Leave Approvals', value: pendingLeaves.length, icon: LeaveIcon, color: '#D97706', bgColor: '#FFFBEB', subtitle: 'Awaiting your decision', path: '/leaves' },
-    canManageResources && { title: 'Pending Resource Requests', value: pendingResourceRequests.length, icon: ResourceRequestIcon, color: '#DC2626', bgColor: '#FEF2F2', subtitle: 'Awaiting your decision', path: '/resources' },
-    canManageProjects && { title: 'Active Projects', value: activeManagedProjects.length, icon: FolderIcon, color: '#4F46E5', bgColor: '#EEF2FF', subtitle: 'You manage', path: '/projects' },
+    canManageResources && { title: 'Pending Resource Requests', value: pendingResourceRequests.length, icon: ResourceRequestIcon, color: '#DC2626', bgColor: '#FEF2F2', subtitle: 'Awaiting your decision', path: '/resources?tab=requests' },
+    canManageProjects && { title: 'Active Projects', value: activeManagedProjects.length, icon: FolderIcon, color: '#334155', bgColor: '#F1F5F9', subtitle: 'You manage', path: '/projects' },
   ].filter(Boolean) as any[];
 
   return (
     <Box sx={{ mt: 1 }}>
       <Divider sx={{ mb: 3 }} />
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Your Approvals & Team</Typography>
+      <Typography variant="h6" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, mb: 0.5 }}>Your Approvals & Team</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Based on your designation's permissions
       </Typography>
@@ -622,8 +762,8 @@ const statusMeta: Record<string, { color: string; icon: any }> = {
   late:     { color: '#D97706', icon: ScheduleIcon },
   'half-day': { color: '#D97706', icon: ScheduleIcon },
   not_clocked: { color: '#94A3B8', icon: CircleIcon },
-  leave:    { color: '#4F46E5', icon: LeaveIcon },
-  holiday:  { color: '#4F46E5', icon: CircleIcon },
+  leave:    { color: '#334155', icon: LeaveIcon },
+  holiday:  { color: '#334155', icon: CircleIcon },
 };
 
 const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName }) => {
@@ -649,7 +789,24 @@ const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName
   });
 
   const clockInMutation = useMutation({
-    mutationFn: () => attendanceService.clockIn(),
+    mutationFn: async () => {
+      // Best-effort location capture - clock-in should still work if the
+      // browser has no geolocation, the user denies the permission prompt,
+      // or it times out, just without a location attached (same fallback
+      // the dedicated Attendance page uses). Previously this button never
+      // even tried, so every dashboard clock-in landed with no location.
+      const position = await new Promise<GeolocationPosition | null>((resolve) => {
+        if (!navigator.geolocation) { resolve(null); return; }
+        navigator.geolocation.getCurrentPosition(
+          (p) => resolve(p),
+          () => resolve(null),
+          { enableHighAccuracy: true, timeout: 10000 },
+        );
+      });
+      return position
+        ? attendanceService.clockIn(position.coords.latitude, position.coords.longitude)
+        : attendanceService.clockIn();
+    },
     onSuccess: () => {
       toast.success('Clocked in');
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
@@ -669,9 +826,9 @@ const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName
   const statusColor = statusMeta[todayStatus]?.color ?? '#94A3B8';
 
   const stats = [
-    { title: "Today's Status", value: todayStatus.replace('_', ' '), icon: AttendanceIcon, color: statusColor, bgColor: '#ECFEFF', subtitle: attendanceStats?.today?.clocked_in ? 'Clocked in' : 'Not clocked in yet', path: '/attendance' },
-    { title: 'Leave Balance', value: totalBalance, icon: LeaveIcon, color: '#4F46E5', bgColor: '#EEF2FF', subtitle: `${pendingLeaveCount} pending request(s)`, path: '/leaves' },
-    { title: 'My Resources', value: activeAssignments.length, icon: ComputerIcon, color: '#0891B2', bgColor: '#ECFEFF', subtitle: 'Currently assigned to you', path: '/assignments' },
+    { title: "Today's Status", value: todayStatus.replace('_', ' '), icon: AttendanceIcon, color: statusColor, bgColor: '#F1F5F9', subtitle: attendanceStats?.today?.clocked_in ? 'Clocked in' : 'Not clocked in yet', path: '/attendance' },
+    { title: 'Leave Balance', value: totalBalance, icon: LeaveIcon, color: '#334155', bgColor: '#F1F5F9', subtitle: `${pendingLeaveCount} pending request(s)`, path: '/leaves' },
+    { title: 'My Resources', value: activeAssignments.length, icon: ComputerIcon, color: '#64748B', bgColor: '#F1F5F9', subtitle: 'Currently assigned to you', path: '/assignments' },
     { title: 'Approved Leaves', value: approvedLeaveCount, icon: CheckCircleIcon, color: '#16A34A', bgColor: '#F0FDF4', subtitle: 'This year', path: '/leaves' },
   ];
 
@@ -707,8 +864,12 @@ const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             Clock in to see your dashboard for today.
           </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            Your browser will ask to share your location - allow it so your clock-in records where you're working from.
+          </Typography>
           <Button
             variant="contained"
+            color="success"
             onClick={() => clockInMutation.mutate()}
             disabled={clockInMutation.isPending}
           >
@@ -723,7 +884,7 @@ const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName
     <Box>
       <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible">
         <Box sx={{ mb: 3 }}>
-          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+          <Typography variant="h5" sx={{ fontFamily: SERIF, fontWeight: 700, letterSpacing: '-0.01em' }}>
             Welcome back, {userFirstName}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -782,7 +943,7 @@ const EmployeeDashboard: React.FC<{ userFirstName?: string }> = ({ userFirstName
             <List dense disablePadding>
               {activeAssignments.slice(0, 6).map((a: any) => (
                 <ListItem key={a.id} disablePadding sx={{ py: 0.5 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}><ComputerIcon sx={{ fontSize: 18, color: '#0891B2' }} /></ListItemIcon>
+                  <ListItemIcon sx={{ minWidth: 32 }}><ComputerIcon sx={{ fontSize: 18, color: '#64748B' }} /></ListItemIcon>
                   <ListItemText
                     primary={a.resource?.name}
                     secondary={(a.projects && a.projects.length > 0 ? a.projects.map((p: any) => p.name).join(', ') : a.project?.name) ?? 'No project'}

@@ -20,6 +20,8 @@ import {
   DialogContent,
   DialogActions,
   Tooltip,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -63,6 +65,7 @@ const XLSX_MIMES = new Set([
 ]);
 
 const NEW_DESIGNATION_SENTINEL = '__new__';
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -105,6 +108,12 @@ const EmployeeDetail: React.FC = () => {
   const { data: roles = [], refetch: refetchRoles } = useQuery({
     queryKey: ['rbac-roles'],
     queryFn: () => rbacService.getRoles(),
+  });
+
+  const { data: allEmployees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeeService.getAll(),
+    enabled: isAdmin,
   });
 
   const { data: seniorityLevels = [] } = useQuery({
@@ -215,6 +224,34 @@ const EmployeeDetail: React.FC = () => {
     onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to update employment details')),
   });
 
+  // Reporting line + contract end date - kept out of the career-tracked
+  // mutation above on purpose: that one only re-enables its Save button when
+  // seniority/employment_type actually change (see employmentUnchanged), so
+  // folding these fields in there would silently make them un-savable on
+  // their own.
+  const [reportingForm, setReportingForm] = useState({
+    reports_to_employee_id: '' as string | number,
+    contract_end_date: '',
+  });
+
+  useEffect(() => {
+    if (employee) {
+      setReportingForm({
+        reports_to_employee_id: employee.reports_to_employee_id ?? '',
+        contract_end_date: employee.contract_end_date ?? '',
+      });
+    }
+  }, [employee]);
+
+  const updateReportingMutation = useMutation({
+    mutationFn: (data: any) => employeeService.update(employeeId, data),
+    onSuccess: () => {
+      invalidateEmployee();
+      toast.success('Saved');
+    },
+    onError: (err: any) => toast.error(getErrorMessage(err, 'Failed to save')),
+  });
+
   // The backend only writes a career-history entry when seniority_level_id or
   // employment_type actually differs from the employee's current value -
   // effective_date has nothing to attach to on its own (it's not a column,
@@ -238,6 +275,9 @@ const EmployeeDetail: React.FC = () => {
     assigned_work_location_id: '' as string | number,
     fixed_clock_in_time: '',
     fixed_clock_out_time: '',
+    shift_working_days: [] as string[],
+    contract_hours_per_period: '' as string | number,
+    contract_hours_period: '' as '' | 'day' | 'week' | 'month',
   });
 
   useEffect(() => {
@@ -247,6 +287,9 @@ const EmployeeDetail: React.FC = () => {
         assigned_work_location_id: employee.assigned_work_location_id ?? '',
         fixed_clock_in_time: employee.fixed_clock_in_time ?? '',
         fixed_clock_out_time: employee.fixed_clock_out_time ?? '',
+        shift_working_days: employee.shift_working_days ? employee.shift_working_days.split(',').map((d: string) => d.trim()) : [],
+        contract_hours_per_period: employee.contract_hours_per_period ?? '',
+        contract_hours_period: employee.contract_hours_period ?? '',
       });
     }
   }, [employee]);
@@ -480,11 +523,11 @@ const EmployeeDetail: React.FC = () => {
         {/* Header */}
         <Paper sx={{ p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 2, boxShadow: 'none', mb: 2.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-            <Avatar sx={{ width: 56, height: 56, fontSize: '1.25rem', fontWeight: 600, bgcolor: 'primary.main' }}>
+            <Avatar sx={{ width: 56, height: 56, fontSize: '1.25rem', fontWeight: 600, bgcolor: '#FFFFFF', color: '#334155', border: '2px solid #CBD5E1' }}>
               {employee.first_name?.[0]}{employee.last_name?.[0]}
             </Avatar>
             <Box sx={{ flex: 1, minWidth: 200 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+              <Typography variant="h5" sx={{ fontFamily: "Georgia, 'Times New Roman', Times, serif", fontWeight: 700, letterSpacing: '-0.02em' }}>
                 {employee.first_name} {employee.last_name}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -662,6 +705,44 @@ const EmployeeDetail: React.FC = () => {
           )}
         </SectionPaper>
 
+        {/* Reporting line + contract end date - separate save from Employment
+            & Promotion above since neither is career-history-tracked. */}
+        {isAdmin && (
+          <SectionPaper title="Reporting & Contract" subtitle="Optional - reference info only, not enforced anywhere.">
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+              <TextField
+                fullWidth select size="small" label="Reports To"
+                value={reportingForm.reports_to_employee_id === '' ? '' : String(reportingForm.reports_to_employee_id)}
+                onChange={(e) => setReportingForm({ ...reportingForm, reports_to_employee_id: e.target.value })}
+              >
+                <MenuItem value="">None</MenuItem>
+                {(allEmployees as any[]).filter((e) => e.id !== employeeId).map((e) => (
+                  <MenuItem key={e.id} value={String(e.id)}>{e.first_name} {e.last_name}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                fullWidth size="small" label="Contract End Date" type="date"
+                value={reportingForm.contract_end_date}
+                onChange={(e) => setReportingForm({ ...reportingForm, contract_end_date: e.target.value })}
+                helperText="For fixed-term/contractor engagements"
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              <Button
+                variant="contained"
+                disabled={updateReportingMutation.isPending}
+                onClick={() => updateReportingMutation.mutate({
+                  reports_to_employee_id: reportingForm.reports_to_employee_id === '' ? null : Number(reportingForm.reports_to_employee_id),
+                  contract_end_date: reportingForm.contract_end_date || null,
+                })}
+              >
+                {updateReportingMutation.isPending ? 'Saving…' : 'Save'}
+              </Button>
+            </Box>
+          </SectionPaper>
+        )}
+
         {/* Attendance settings - admin only, controls clock-in/out rules
             enforced in app/api/v1/attendance.py. */}
         {isAdmin && (
@@ -688,7 +769,7 @@ const EmployeeDetail: React.FC = () => {
                   >
                     <MenuItem value="">None</MenuItem>
                     {(workLocations as any[]).map((loc) => (
-                      <MenuItem key={loc.id} value={String(loc.id)}>{loc.name}</MenuItem>
+                      <MenuItem key={loc.id} value={String(loc.id)}>{loc.is_office ? `${loc.name} (Office)` : loc.name}</MenuItem>
                     ))}
                   </TextField>
                   <TextField
@@ -703,8 +784,43 @@ const EmployeeDetail: React.FC = () => {
                     onChange={(e) => setAttendanceForm({ ...attendanceForm, fixed_clock_out_time: e.target.value })}
                     slotProps={{ inputLabel: { shrink: true } }}
                   />
+                  <Box sx={{ gridColumn: '1 / -1' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                      Working Days (optional - leave empty for every day)
+                    </Typography>
+                    <ToggleButtonGroup
+                      value={attendanceForm.shift_working_days}
+                      onChange={(_, days: string[]) => setAttendanceForm({ ...attendanceForm, shift_working_days: days })}
+                      size="small"
+                    >
+                      {WEEKDAYS.map((d) => (
+                        <ToggleButton key={d} value={d} sx={{ px: 1.5, fontSize: '0.75rem' }}>{d}</ToggleButton>
+                      ))}
+                    </ToggleButtonGroup>
+                  </Box>
                 </>
               )}
+              <Box sx={{ gridColumn: '1 / -1' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  Or, for hours-based arrangements instead of fixed days (e.g. "30 hours/month")
+                </Typography>
+              </Box>
+              <TextField
+                fullWidth size="small" label="Contract Hours" type="number"
+                value={attendanceForm.contract_hours_per_period}
+                onChange={(e) => setAttendanceForm({ ...attendanceForm, contract_hours_per_period: e.target.value })}
+                slotProps={{ htmlInput: { min: 0, step: 0.5 } }}
+              />
+              <TextField
+                fullWidth select size="small" label="Per"
+                value={attendanceForm.contract_hours_period}
+                onChange={(e) => setAttendanceForm({ ...attendanceForm, contract_hours_period: e.target.value as '' | 'day' | 'week' | 'month' })}
+              >
+                <MenuItem value="">-</MenuItem>
+                <MenuItem value="day">Day</MenuItem>
+                <MenuItem value="week">Week</MenuItem>
+                <MenuItem value="month">Month</MenuItem>
+              </TextField>
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
               <Button
@@ -715,6 +831,9 @@ const EmployeeDetail: React.FC = () => {
                   assigned_work_location_id: attendanceForm.assigned_work_location_id === '' ? null : Number(attendanceForm.assigned_work_location_id),
                   fixed_clock_in_time: attendanceForm.fixed_clock_in_time || null,
                   fixed_clock_out_time: attendanceForm.fixed_clock_out_time || null,
+                  shift_working_days: attendanceForm.shift_working_days.length > 0 ? attendanceForm.shift_working_days.join(',') : null,
+                  contract_hours_per_period: attendanceForm.contract_hours_per_period === '' ? null : Number(attendanceForm.contract_hours_per_period),
+                  contract_hours_period: attendanceForm.contract_hours_period || null,
                 })}
               >
                 {updateAttendanceMutation.isPending ? 'Saving…' : 'Save Attendance Settings'}
@@ -840,10 +959,10 @@ const EmployeeDetail: React.FC = () => {
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     <Box sx={{
                       width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      bgcolor: entry.action === 'joined' ? '#EEF2FF' : '#F0FDF4', flexShrink: 0,
+                      bgcolor: entry.action === 'joined' ? '#F1F5F9' : '#F0FDF4', flexShrink: 0,
                     }}>
                       {entry.action === 'joined'
-                        ? <JoinedIcon sx={{ fontSize: 16, color: '#4F46E5' }} />
+                        ? <JoinedIcon sx={{ fontSize: 16, color: '#334155' }} />
                         : <PromotionIcon sx={{ fontSize: 16, color: '#16A34A' }} />}
                     </Box>
                     {i !== history.length - 1 && <Box sx={{ width: '2px', flex: 1, bgcolor: 'divider', my: 0.5 }} />}
@@ -1063,7 +1182,7 @@ const EmployeeDetail: React.FC = () => {
             </Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={closeDocModal}>Cancel</Button>
+            <Button onClick={closeDocModal} color="inherit">Cancel</Button>
             <Button
               variant="contained"
               onClick={() => uploadDocMutation.mutate()}

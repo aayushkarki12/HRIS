@@ -156,7 +156,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
             cursor: 'pointer',
             bgcolor: '#F8FAFC',
             transition: 'all 150ms ease',
-            '&:hover': { borderColor: 'primary.main', bgcolor: '#EEF2FF' },
+            '&:hover': { borderColor: 'primary.main', bgcolor: '#F1F5F9' },
             minWidth: 200,
           }}
         >
@@ -301,8 +301,8 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
                         borderRadius: 0,
                         borderLeft: '3px solid',
                         borderLeftColor: n.is_read ? 'transparent' : 'primary.main',
-                        backgroundColor: n.is_read ? 'transparent' : '#F8F9FF',
-                        '&:hover': { backgroundColor: n.is_read ? 'action.hover' : '#F0F2FF' },
+                        backgroundColor: n.is_read ? 'transparent' : '#F8FAFC',
+                        '&:hover': { backgroundColor: n.is_read ? 'action.hover' : '#F1F5F9' },
                       }}
                     >
                       <ListItemText
@@ -363,7 +363,9 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuToggle }) => {
                 sx={{
                   width: 32,
                   height: 32,
-                  bgcolor: 'primary.main',
+                  bgcolor: '#FFFFFF',
+                  color: '#334155',
+                  border: '1.5px solid #CBD5E1',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                 }}
